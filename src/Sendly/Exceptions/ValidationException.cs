@@ -1,0 +1,15 @@
+namespace Sendly.Exceptions;
+
+/// <summary>
+/// Thrown when the request contains invalid parameters.
+/// </summary>
+public class ValidationException : SendlyException
+{
+    /// <summary>
+    /// Creates a new ValidationException.
+    /// </summary>
+    public ValidationException(string message = "Validation failed")
+        : base(message, 400, "VALIDATION_ERROR")
+    {
+    }
+}
