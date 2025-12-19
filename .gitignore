@@ -1,0 +1,22 @@
+# Build
+bin/
+obj/
+*.nupkg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.vs/
+*.user
+*.suo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# NuGet
+packages/
+*.nuget.props
+*.nuget.targets
