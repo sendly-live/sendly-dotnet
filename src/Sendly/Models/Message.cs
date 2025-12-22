@@ -14,10 +14,29 @@ public class Message
     public static class Statuses
     {
         public const string Queued = "queued";
-        public const string Sending = "sending";
         public const string Sent = "sent";
         public const string Delivered = "delivered";
         public const string Failed = "failed";
+    }
+
+    /// <summary>
+    /// Message direction constants.
+    /// </summary>
+    public static class Directions
+    {
+        public const string Outbound = "outbound";
+        public const string Inbound = "inbound";
+    }
+
+    /// <summary>
+    /// Sender type constants.
+    /// </summary>
+    public static class SenderTypes
+    {
+        public const string User = "user";
+        public const string Api = "api";
+        public const string System = "system";
+        public const string Campaign = "campaign";
     }
 
     /// <summary>
@@ -33,6 +52,12 @@ public class Message
     public string To { get; set; } = string.Empty;
 
     /// <summary>
+    /// Sender phone number or ID.
+    /// </summary>
+    [JsonPropertyName("from")]
+    public string? From { get; set; }
+
+    /// <summary>
     /// Message content.
     /// </summary>
     [JsonPropertyName("text")]
@@ -45,10 +70,52 @@ public class Message
     public string Status { get; set; } = string.Empty;
 
     /// <summary>
+    /// Message direction (outbound or inbound).
+    /// </summary>
+    [JsonPropertyName("direction")]
+    public string Direction { get; set; } = Directions.Outbound;
+
+    /// <summary>
+    /// Number of SMS segments.
+    /// </summary>
+    [JsonPropertyName("segments")]
+    public int Segments { get; set; } = 1;
+
+    /// <summary>
     /// Credits consumed.
     /// </summary>
     [JsonPropertyName("credits_used")]
     public int CreditsUsed { get; set; }
+
+    /// <summary>
+    /// Whether this is a sandbox message.
+    /// </summary>
+    [JsonPropertyName("is_sandbox")]
+    public bool IsSandbox { get; set; }
+
+    /// <summary>
+    /// Type of sender (user, api, system, campaign).
+    /// </summary>
+    [JsonPropertyName("sender_type")]
+    public string? SenderType { get; set; }
+
+    /// <summary>
+    /// Telnyx message ID for carrier tracking.
+    /// </summary>
+    [JsonPropertyName("telnyx_message_id")]
+    public string? TelnyxMessageId { get; set; }
+
+    /// <summary>
+    /// Warning message if any.
+    /// </summary>
+    [JsonPropertyName("warning")]
+    public string? Warning { get; set; }
+
+    /// <summary>
+    /// Optional note from the sender.
+    /// </summary>
+    [JsonPropertyName("sender_note")]
+    public string? SenderNote { get; set; }
 
     /// <summary>
     /// Creation timestamp.
@@ -93,7 +160,7 @@ public class Message
     /// <summary>
     /// Whether the message is pending.
     /// </summary>
-    public bool IsPending => Status is Statuses.Queued or Statuses.Sending or Statuses.Sent;
+    public bool IsPending => Status is Statuses.Queued or Statuses.Sent;
 
     /// <summary>
     /// Creates a Message from a JSON element.

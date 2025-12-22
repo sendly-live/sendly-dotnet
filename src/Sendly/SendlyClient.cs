@@ -34,6 +34,16 @@ public class SendlyClient : IDisposable
     public MessagesResource Messages { get; }
 
     /// <summary>
+    /// Gets the Webhooks resource.
+    /// </summary>
+    public WebhooksResource Webhooks { get; }
+
+    /// <summary>
+    /// Gets the Account resource.
+    /// </summary>
+    public AccountResource Account { get; }
+
+    /// <summary>
     /// Creates a new Sendly client.
     /// </summary>
     /// <param name="apiKey">Your Sendly API key</param>
@@ -66,6 +76,8 @@ public class SendlyClient : IDisposable
         };
 
         Messages = new MessagesResource(this);
+        Webhooks = new WebhooksResource(this);
+        Account = new AccountResource(this);
     }
 
     /// <summary>
@@ -87,6 +99,32 @@ public class SendlyClient : IDisposable
 
         return await ExecuteWithRetryAsync(
             () => _httpClient.PostAsync(path, content, cancellationToken),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Makes a PATCH request.
+    /// </summary>
+    internal async Task<JsonDocument> PatchAsync<T>(string path, T body, CancellationToken cancellationToken = default)
+    {
+        var json = JsonSerializer.Serialize(body, _jsonOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        return await ExecuteWithRetryAsync(
+            () => _httpClient.PatchAsync(path, content, cancellationToken),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Makes a PUT request.
+    /// </summary>
+    internal async Task<JsonDocument> PutAsync<T>(string path, T body, CancellationToken cancellationToken = default)
+    {
+        var json = JsonSerializer.Serialize(body, _jsonOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        return await ExecuteWithRetryAsync(
+            () => _httpClient.PutAsync(path, content, cancellationToken),
             cancellationToken);
     }
 
