@@ -30,6 +30,16 @@ public class Webhook
     }
 
     /// <summary>
+    /// Webhook mode constants for event filtering.
+    /// </summary>
+    public static class Modes
+    {
+        public const string All = "all";
+        public const string Test = "test";
+        public const string Live = "live";
+    }
+
+    /// <summary>
     /// Unique webhook identifier.
     /// </summary>
     [JsonPropertyName("id")]
@@ -46,6 +56,12 @@ public class Webhook
     /// </summary>
     [JsonPropertyName("events")]
     public List<string> Events { get; set; } = new();
+
+    /// <summary>
+    /// Event mode filter (all, test, live).
+    /// </summary>
+    [JsonPropertyName("mode")]
+    public string Mode { get; set; } = Modes.All;
 
     /// <summary>
     /// Whether the webhook is active.
@@ -187,6 +203,12 @@ public class CreateWebhookOptions
     public List<string> Events { get; set; } = new();
 
     /// <summary>
+    /// Event mode filter (all, test, live). Live requires verification.
+    /// </summary>
+    [JsonPropertyName("mode")]
+    public string? Mode { get; set; }
+
+    /// <summary>
     /// API version for webhook payloads.
     /// </summary>
     [JsonPropertyName("api_version")]
@@ -215,6 +237,12 @@ public class UpdateWebhookOptions
     /// </summary>
     [JsonPropertyName("is_active")]
     public bool? IsActive { get; set; }
+
+    /// <summary>
+    /// Event mode filter (all, test, live).
+    /// </summary>
+    [JsonPropertyName("mode")]
+    public string? Mode { get; set; }
 }
 
 /// <summary>
