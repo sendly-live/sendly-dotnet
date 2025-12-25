@@ -20,11 +20,19 @@ public class SendMessageRequest
     public string Text { get; set; }
 
     /// <summary>
+    /// Message type: "marketing" (default, subject to quiet hours) or "transactional" (24/7).
+    /// </summary>
+    [JsonPropertyName("messageType")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? MessageType { get; set; }
+
+    /// <summary>
     /// Creates a new send message request.
     /// </summary>
-    public SendMessageRequest(string to, string text)
+    public SendMessageRequest(string to, string text, string? messageType = null)
     {
         To = to;
         Text = text;
+        MessageType = messageType;
     }
 }

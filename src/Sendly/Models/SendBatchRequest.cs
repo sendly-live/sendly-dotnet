@@ -21,14 +21,23 @@ public class SendBatchRequest
     public string? From { get; set; }
 
     /// <summary>
+    /// Message type: "marketing" (default, subject to quiet hours) or "transactional" (24/7).
+    /// </summary>
+    [JsonPropertyName("messageType")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? MessageType { get; set; }
+
+    /// <summary>
     /// Creates a new send batch request.
     /// </summary>
     /// <param name="messages">List of messages to send</param>
     /// <param name="from">Optional sender ID</param>
-    public SendBatchRequest(List<BatchMessageItem> messages, string? from = null)
+    /// <param name="messageType">Message type: "marketing" or "transactional"</param>
+    public SendBatchRequest(List<BatchMessageItem> messages, string? from = null, string? messageType = null)
     {
         Messages = messages;
         From = from;
+        MessageType = messageType;
     }
 
     /// <summary>
