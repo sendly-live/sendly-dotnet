@@ -76,14 +76,14 @@ using var client = new SendlyClient("sk_live_v1_xxx", new SendlyClientOptions
 ### Send an SMS
 
 ```csharp
-// Simple
-var message = await client.Messages.SendAsync("+15551234567", "Hello!");
+// Marketing message (default)
+var message = await client.Messages.SendAsync("+15551234567", "Check out our new features!");
 
-// With request object
+// Transactional message (bypasses quiet hours)
 var message = await client.Messages.SendAsync(new SendMessageRequest(
     "+15551234567",
-    "Hello from Sendly!"
-));
+    "Your verification code is: 123456"
+) { MessageType = "transactional" });
 
 Console.WriteLine(message.Id);
 Console.WriteLine(message.Status);
@@ -233,11 +233,12 @@ Use test API keys (`sk_test_v1_xxx`) with these test numbers:
 
 | Number | Behavior |
 |--------|----------|
-| +15550001234 | Success |
-| +15550001001 | Invalid number |
-| +15550001002 | Carrier rejected |
-| +15550001003 | No credits |
-| +15550001004 | Rate limited |
+| +15005550000 | Success (instant) |
+| +15005550001 | Fails: invalid_number |
+| +15005550002 | Fails: unroutable_destination |
+| +15005550003 | Fails: queue_full |
+| +15005550004 | Fails: rate_limit_exceeded |
+| +15005550006 | Fails: carrier_violation |
 
 ## License
 
