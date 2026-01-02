@@ -65,7 +65,7 @@ Before sending live SMS messages, you need:
 ```csharp
 using var client = new SendlyClient("sk_live_v1_xxx", new SendlyClientOptions
 {
-    BaseUrl = "https://api.sendly.live/v1",
+    BaseUrl = "https://sendly.live/api/v1",
     Timeout = TimeSpan.FromSeconds(60),
     MaxRetries = 5
 });
