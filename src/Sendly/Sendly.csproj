@@ -11,8 +11,8 @@
     <Description>Official .NET SDK for the Sendly SMS API</Description>
     <Copyright>Copyright (c) Sendly</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/sendly-live/sendly-dotnet</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/sendly-live/sendly-dotnet</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/SendlyHQ/sendly-dotnet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/SendlyHQ/sendly-dotnet</RepositoryUrl>
     <PackageTags>sendly;sms;messaging;api;sdk</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
