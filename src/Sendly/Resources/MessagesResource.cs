@@ -58,6 +58,70 @@ public partial class MessagesResource
     }
 
     /// <summary>
+    /// Sends a group MMS to 2-8 recipients (US/Canada only).
+    ///
+    /// Creates a multi-party MMS conversation: every recipient sees the others,
+    /// and replies fan out to all participants. Group messaging is an A2P 10DLC
+    /// capability — the sending number must be an MMS-enabled, 10DLC-registered
+    /// number you own. Omit <see cref="SendGroupMessageRequest.From"/> to use
+    /// your workspace's default sender. Requires the group_mms / enable_mms flag.
+    /// </summary>
+    /// <param name="request">Group message details (2-8 recipients, text and/or media)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The created group message, including a group_message_id on live sends</returns>
+    public async Task<GroupMessageResponse> SendGroupAsync(SendGroupMessageRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request.To == null || request.To.Count < 2)
+            throw new ValidationException("Group messaging requires at least 2 recipients in 'to'");
+
+        if (request.To.Count > 8)
+            throw new ValidationException("Group messaging supports at most 8 recipients");
+
+        foreach (var recipient in request.To)
+            ValidatePhone(recipient);
+
+        var hasMedia = request.MediaUrls != null && request.MediaUrls.Count > 0;
+        if (string.IsNullOrEmpty(request.Text) && !hasMedia)
+            throw new ValidationException("Provide 'text' or 'mediaUrls'");
+
+        using var response = await _client.PostAsync("/messages/group", request, cancellationToken);
+        var root = response.RootElement;
+
+        if (root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object)
+        {
+            return GroupMessageResponse.FromJson(data, _client.JsonOptions);
+        }
+
+        return GroupMessageResponse.FromJson(root, _client.JsonOptions);
+    }
+
+    /// <summary>
+    /// AI-enhances a draft message for clarity, compliance, and send-readiness.
+    ///
+    /// Rewrites the supplied text into a single, polished SMS segment (≤160
+    /// chars) and returns a short explanation of what changed. Pass
+    /// <see cref="EnhanceMessageRequest.MessageType"/> to steer the rewrite; with
+    /// no text it generates a suitable message for that type instead. At least
+    /// one of <see cref="EnhanceMessageRequest.Text"/> or
+    /// <see cref="EnhanceMessageRequest.MessageType"/> is required.
+    ///
+    /// If AI enhancement is unavailable for the account, the response falls back
+    /// to the original text with an empty explanation. Requires the
+    /// ai_classification flag.
+    /// </summary>
+    /// <param name="request">The draft text and/or a message-type hint</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The enhanced text, an explanation, and the model used</returns>
+    public async Task<EnhanceMessageResponse> EnhanceAsync(EnhanceMessageRequest request, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(request.Text) && string.IsNullOrEmpty(request.MessageType))
+            throw new ValidationException("Provide 'text' or 'messageType'");
+
+        using var response = await _client.PostAsync("/ai/enhance", request, cancellationToken);
+        return EnhanceMessageResponse.FromJson(response.RootElement, _client.JsonOptions);
+    }
+
+    /// <summary>
     /// Lists messages.
     /// </summary>
     /// <param name="options">Query options</param>

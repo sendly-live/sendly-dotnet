@@ -15,7 +15,7 @@ public class SendlyClient : IDisposable
     /// <summary>
     /// SDK version.
     /// </summary>
-    public const string Version = "1.0.5";
+    public const string Version = "3.36.0";
 
     /// <summary>
     /// Default API base URL.
@@ -49,9 +49,14 @@ public class SendlyClient : IDisposable
     public VerifyResource Verify { get; }
 
     /// <summary>
-    /// Gets the Templates resource.
+    /// Gets the Templates resource (Verify API OTP templates, /verify/templates).
     /// </summary>
     public TemplatesResource Templates { get; }
+
+    /// <summary>
+    /// Gets the MessageTemplates resource — reusable SMS message templates (/templates).
+    /// </summary>
+    public MessageTemplatesResource MessageTemplates { get; }
 
     /// <summary>
     /// Gets the Campaigns resource.
@@ -109,6 +114,12 @@ public class SendlyClient : IDisposable
     public TenDlcResource TenDlc { get; }
 
     /// <summary>
+    /// Gets the Links resource — branded URL shortening (gated behind the
+    /// founder-only url_shortener flag; not yet publicly stable).
+    /// </summary>
+    public LinksResource Links { get; }
+
+    /// <summary>
     /// Creates a new Sendly client.
     /// </summary>
     /// <param name="apiKey">Your Sendly API key</param>
@@ -148,6 +159,7 @@ public class SendlyClient : IDisposable
         Account = new AccountResource(this);
         Verify = new VerifyResource(this);
         Templates = new TemplatesResource(this);
+        MessageTemplates = new MessageTemplatesResource(this);
         Campaigns = new CampaignsResource(this);
         Contacts = new ContactsResource(this);
         Media = new MediaResource(this);
@@ -159,6 +171,7 @@ public class SendlyClient : IDisposable
         BusinessUpgrade = new BusinessUpgradeResource(this);
         Numbers = new NumbersResource(this);
         TenDlc = new TenDlcResource(this);
+        Links = new LinksResource(this);
     }
 
     /// <summary>

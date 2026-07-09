@@ -25,7 +25,7 @@ dotnet add package Sendly
 Install-Package Sendly
 
 # PackageReference (add to .csproj)
-<PackageReference Include="Sendly" Version="3.31.0" />
+<PackageReference Include="Sendly" Version="3.36.0" />
 ```
 
 ## Quick Start
@@ -231,6 +231,129 @@ await foreach (var message in client.Messages.GetAllAsync(new ListMessagesOption
 }
 ```
 
+### Group MMS
+
+```csharp
+// Send a group MMS to 2-8 US/Canada recipients. Everyone sees the others and
+// replies fan out to the group. Omit From to use your default sender.
+var group = await client.Messages.SendGroupAsync(new SendGroupMessageRequest(
+    new[] { "+14155551234", "+14155555678" },
+    "Hey team - quick sync at noon?"
+));
+
+Console.WriteLine(group.Id);              // "msg_abc123"
+Console.WriteLine(group.GroupMessageId);  // "grp_xxx" (on live sends)
+Console.WriteLine(group.Status);          // "sent" or "delivered"
+```
+
+### AI Message Enhancement
+
+```csharp
+// Rewrite a draft into a single polished SMS segment (<=160 chars).
+var result = await client.Messages.EnhanceAsync(new EnhanceMessageRequest(
+    text: "hey come check out our sale this weekend",
+    messageType: "marketing"
+));
+
+Console.WriteLine(result.Enhanced);     // polished rewrite
+Console.WriteLine(result.Explanation);  // what changed and why
+```
+
+## Message Templates
+
+Reusable SMS templates with `{{variables}}`, published for use with the Verify
+API. (Distinct from `client.Templates`, which manages Verify OTP templates.)
+
+```csharp
+// List presets + custom templates
+var listing = await client.MessageTemplates.ListAsync();
+
+// Create a draft, then publish
+var template = await client.MessageTemplates.CreateAsync(new CreateMessageTemplateRequest
+{
+    Name = "Password Reset",
+    Text = "{{app_name}}: your reset code is {{code}}. Valid for 10 minutes."
+});
+await client.MessageTemplates.PublishAsync(template.Id);
+
+// Preview with sample values
+var preview = await client.MessageTemplates.PreviewAsync(template.Id, new Dictionary<string, string>
+{
+    ["app_name"] = "MyApp",
+    ["code"] = "123456"
+});
+Console.WriteLine(preview.PreviewText);
+
+// Clone (including from a preset), update, delete
+var clone = await client.MessageTemplates.CloneAsync("tpl_preset_otp", "My Custom OTP");
+await client.MessageTemplates.DeleteAsync(clone.Id);
+```
+
+## Branded Short Links
+
+Mint branded, owned-domain short links (better carrier deliverability than
+public shorteners) with click analytics and a per-link kill switch.
+
+> **Note:** URL shortening is gated behind the founder-only `url_shortener`
+> flag and is not yet publicly stable. Calls raise `NotFoundException`
+> (`not_found`) until the flag is on for your account.
+
+```csharp
+// Shorten a URL
+var link = await client.Links.CreateAsync("https://example.com/spring-sale");
+Console.WriteLine(link.ShortUrl); // "https://sendly.live/l/Ab3xY7"
+
+// List your links with click counts
+var links = await client.Links.ListAsync(new ListShortLinksOptions { Limit = 20 });
+foreach (var l in links.Links)
+{
+    Console.WriteLine($"{l.ShortUrl} -> {l.DestinationUrl} ({l.ClickCount} clicks)");
+}
+
+// Kill / re-enable a link
+await client.Links.DisableAsync(link.Code);
+await client.Links.EnableAsync(link.Code);
+```
+
+## Numbers
+
+```csharp
+// Browse coverage and search for an available number
+var countries = await client.Numbers.ListCountriesAsync();
+var available = await client.Numbers.ListAvailableAsync(new ListAvailableNumbersOptions
+{
+    Country = "GB",
+    Type = "mobile"
+});
+
+// List the numbers you own
+var owned = await client.Numbers.ListAsync();
+foreach (var n in owned.Numbers)
+{
+    Console.WriteLine($"{n.PhoneNumber} — {n.Status}");
+}
+
+// Get one by id (includes IsDefault)
+var number = await client.Numbers.GetAsync("num_xxx");
+Console.WriteLine($"{number.PhoneNumber} — default: {number.IsDefault}");
+
+// Make it the workspace default sender (must be active)
+var updated = await client.Numbers.UpdateAsync("num_xxx", new UpdateNumberRequest { IsDefault = true });
+// (or the convenience wrapper)
+await client.Numbers.SetDefaultAsync("num_xxx");
+
+// Cancel a scheduled release ("keep this number")
+await client.Numbers.UpdateAsync("num_xxx", new UpdateNumberRequest { PendingCancellation = false });
+await client.Numbers.KeepAsync("num_xxx"); // convenience wrapper
+
+// Release a number. A live paid purchase is cancelled at period end.
+var release = await client.Numbers.ReleaseAsync("num_xxx");
+if (release.Scheduled == true)
+    Console.WriteLine($"Releases at {release.ScheduledReleaseAt}");
+else
+    Console.WriteLine("Released");
+```
+
 ## Webhooks
 
 ```csharp
@@ -317,6 +440,14 @@ Console.WriteLine($"New key: {newKey.Key}"); // Only shown once!
 
 // Revoke an API key
 await client.Account.RevokeApiKeyAsync("key_xxx");
+
+// Rotate a key. Mints a replacement and keeps the old one working for a grace
+// period (24-168 hours, default 24) so you can roll the new key out first.
+var rotation = await client.Account.RotateApiKeyAsync("key_xxx", gracePeriodHours: 48);
+Console.WriteLine(rotation.NewKey.Key);     // full raw sk_ value — shown once!
+Console.WriteLine(rotation.NewKey.Warning);
+Console.WriteLine(rotation.OldKey.ExpiresAt); // when the old key stops working
+Console.WriteLine(rotation.Message);
 ```
 
 ## Error Handling

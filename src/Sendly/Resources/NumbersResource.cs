@@ -120,6 +120,95 @@ public class NumbersResource
         using var doc = await _client.PostAsync("/numbers/buy", request, cancellationToken);
         return JsonSerializer.Deserialize<BuyNumberResponse>(doc.RootElement.GetRawText(), _client.JsonOptions)!;
     }
+
+    /// <summary>
+    /// Get a single number you own by id. Unlike <see cref="ListAsync"/>, the
+    /// returned record includes <see cref="OwnedNumber.IsDefault"/>.
+    /// </summary>
+    /// <param name="id">The number's id</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The full owned-number record</returns>
+    public async Task<OwnedNumber> GetAsync(
+        string id,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(id))
+            throw new ValidationException("A number 'id' is required");
+
+        using var doc = await _client.GetAsync($"/numbers/{Uri.EscapeDataString(id)}", null, cancellationToken);
+        return JsonSerializer.Deserialize<OwnedNumber>(doc.RootElement.GetRawText(), _client.JsonOptions)!;
+    }
+
+    /// <summary>
+    /// Update a number you own. Supply at least one supported mutation:
+    /// <list type="bullet">
+    /// <item><description><see cref="UpdateNumberRequest.IsDefault"/> = true — make this the
+    /// workspace's default sending number (the number must be <c>active</c>).</description></item>
+    /// <item><description><see cref="UpdateNumberRequest.PendingCancellation"/> = false — cancel a
+    /// previously scheduled release and keep the number.</description></item>
+    /// </list>
+    /// </summary>
+    /// <param name="id">The number's id</param>
+    /// <param name="request">The mutation(s) to apply</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The updated owned-number record (including <see cref="OwnedNumber.IsDefault"/>)</returns>
+    public async Task<OwnedNumber> UpdateAsync(
+        string id,
+        UpdateNumberRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(id))
+            throw new ValidationException("A number 'id' is required");
+        if (request == null || (request.IsDefault == null && request.PendingCancellation == null))
+            throw new ValidationException(
+                "Provide at least one of { IsDefault = true } or { PendingCancellation = false }");
+
+        using var doc = await _client.PatchAsync($"/numbers/{Uri.EscapeDataString(id)}", request, cancellationToken);
+        return JsonSerializer.Deserialize<OwnedNumber>(doc.RootElement.GetRawText(), _client.JsonOptions)!;
+    }
+
+    /// <summary>
+    /// Make a number the workspace's default sending number. The number must be
+    /// <c>active</c>. Convenience wrapper over <see cref="UpdateAsync"/>.
+    /// </summary>
+    public async Task<OwnedNumber> SetDefaultAsync(
+        string id,
+        CancellationToken cancellationToken = default)
+    {
+        return await UpdateAsync(id, new UpdateNumberRequest { IsDefault = true }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Cancel a previously scheduled release and keep the number. Convenience
+    /// wrapper over <see cref="UpdateAsync"/>.
+    /// </summary>
+    public async Task<OwnedNumber> KeepAsync(
+        string id,
+        CancellationToken cancellationToken = default)
+    {
+        return await UpdateAsync(id, new UpdateNumberRequest { PendingCancellation = false }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Release a number you own. A live paid purchase is cancelled at the end of
+    /// the paid period (the response then carries
+    /// <see cref="ReleaseNumberResponse.Scheduled"/> and a
+    /// <see cref="ReleaseNumberResponse.ScheduledReleaseAt"/>); everything else
+    /// is released immediately.
+    /// </summary>
+    /// <param name="id">The number's id</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>An immediate or scheduled release result</returns>
+    public async Task<ReleaseNumberResponse> ReleaseAsync(
+        string id,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(id))
+            throw new ValidationException("A number 'id' is required");
+
+        using var doc = await _client.DeleteAsync($"/numbers/{Uri.EscapeDataString(id)}", cancellationToken);
+        return JsonSerializer.Deserialize<ReleaseNumberResponse>(doc.RootElement.GetRawText(), _client.JsonOptions)!;
+    }
 }
 
 /// <summary>
@@ -212,6 +301,14 @@ public class OwnedNumber
 
     [JsonPropertyName("monthlyCostCents")]
     public int MonthlyCostCents { get; set; }
+
+    /// <summary>
+    /// True if this is the workspace's default sending number. Included by
+    /// <see cref="NumbersResource.GetAsync"/> and <see cref="NumbersResource.UpdateAsync"/>;
+    /// omitted (null) by the list endpoint.
+    /// </summary>
+    [JsonPropertyName("isDefault")]
+    public bool? IsDefault { get; set; }
 
     /// <summary>When regulatory documents were submitted (ISO-8601), or null if the number still needs them.</summary>
     [JsonPropertyName("requirementsSubmittedAt")]
@@ -317,4 +414,47 @@ public class BuyNumberResponse
     /// <summary>Hosted-action hand-off when status is documents_required or payment_required.</summary>
     [JsonPropertyName("action")]
     public NumberBuyAction? Action { get; set; }
+}
+
+/// <summary>
+/// Body for <see cref="NumbersResource.UpdateAsync"/>. Supply at least one field.
+/// Only these two mutations are supported; null values are omitted.
+/// </summary>
+public class UpdateNumberRequest
+{
+    /// <summary>
+    /// Set to <c>true</c> to make this the workspace's default sending number.
+    /// The number must be <c>active</c>, or the call fails with <c>invalid_state</c>.
+    /// </summary>
+    [JsonPropertyName("isDefault")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? IsDefault { get; set; }
+
+    /// <summary>
+    /// Set to <c>false</c> to cancel a previously scheduled release and keep the
+    /// number.
+    /// </summary>
+    [JsonPropertyName("pendingCancellation")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? PendingCancellation { get; set; }
+}
+
+/// <summary>
+/// Response from <see cref="NumbersResource.ReleaseAsync"/>. An immediate release
+/// is <c>{ success: true }</c>; a live paid purchase cancelled at period end is
+/// <c>{ success: true, scheduled: true, scheduledReleaseAt }</c>.
+/// </summary>
+public class ReleaseNumberResponse
+{
+    /// <summary>Always true on success.</summary>
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    /// <summary>True when the release was scheduled for the end of the paid period.</summary>
+    [JsonPropertyName("scheduled")]
+    public bool? Scheduled { get; set; }
+
+    /// <summary>When the scheduled release takes effect (ISO-8601), when <see cref="Scheduled"/>.</summary>
+    [JsonPropertyName("scheduledReleaseAt")]
+    public string? ScheduledReleaseAt { get; set; }
 }

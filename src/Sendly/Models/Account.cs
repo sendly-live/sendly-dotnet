@@ -414,6 +414,119 @@ public class CreateApiKeyOptions
 }
 
 /// <summary>
+/// Options for <see cref="Sendly.Resources.AccountResource.RotateApiKeyAsync(string, int?, System.Threading.CancellationToken)"/>.
+/// </summary>
+public class RotateApiKeyRequest
+{
+    /// <summary>
+    /// How long the old key keeps working after rotation, in hours (24-168
+    /// inclusive; the server defaults to 24 when omitted). Omitted from the wire
+    /// when null.
+    /// </summary>
+    [JsonPropertyName("gracePeriodHours")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? GracePeriodHours { get; set; }
+}
+
+/// <summary>
+/// An API key as returned in a rotation response. The <c>newKey</c> additionally
+/// carries the one-time raw <see cref="Key"/> and a <see cref="Warning"/>; the
+/// <c>oldKey</c> leaves both null.
+/// </summary>
+public class RotatedApiKey
+{
+    /// <summary>Unique API key identifier.</summary>
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>Display name for the API key.</summary>
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Public reference id (key_xxx), when present.</summary>
+    [JsonPropertyName("keyId")]
+    public string? KeyId { get; set; }
+
+    /// <summary>Key prefix for identification, when present.</summary>
+    [JsonPropertyName("keyPrefix")]
+    public string? KeyPrefix { get; set; }
+
+    /// <summary>Key type: "test" or "live".</summary>
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
+
+    /// <summary>Permission scopes granted to the key.</summary>
+    [JsonPropertyName("scopes")]
+    public List<string>? Scopes { get; set; }
+
+    /// <summary>Whether the key is active.</summary>
+    [JsonPropertyName("isActive")]
+    public bool IsActive { get; set; }
+
+    /// <summary>Creation timestamp.</summary>
+    [JsonPropertyName("createdAt")]
+    public DateTime? CreatedAt { get; set; }
+
+    /// <summary>Last time the key was used.</summary>
+    [JsonPropertyName("lastUsedAt")]
+    public DateTime? LastUsedAt { get; set; }
+
+    /// <summary>
+    /// Expiration timestamp. On the rotated old key this is the end of the grace
+    /// period, after which it stops working.
+    /// </summary>
+    [JsonPropertyName("expiresAt")]
+    public DateTime? ExpiresAt { get; set; }
+
+    /// <summary>Revocation timestamp, when revoked.</summary>
+    [JsonPropertyName("revokedAt")]
+    public DateTime? RevokedAt { get; set; }
+
+    /// <summary>Id of the key this one was rotated from, when applicable.</summary>
+    [JsonPropertyName("rotatedFromId")]
+    public string? RotatedFromId { get; set; }
+
+    /// <summary>
+    /// The full raw key value (sk_...), present only on the <c>newKey</c> and
+    /// shown only once — store it securely.
+    /// </summary>
+    [JsonPropertyName("key")]
+    public string? Key { get; set; }
+
+    /// <summary>Human-readable warning, present only on the <c>newKey</c>.</summary>
+    [JsonPropertyName("warning")]
+    public string? Warning { get; set; }
+}
+
+/// <summary>
+/// Response from rotating an API key. The new key supersedes the old one, which
+/// keeps working until the end of its grace period.
+/// </summary>
+public class RotateApiKeyResponse
+{
+    /// <summary>The newly created key, carrying the one-time raw <see cref="RotatedApiKey.Key"/>.</summary>
+    [JsonPropertyName("newKey")]
+    public RotatedApiKey NewKey { get; set; } = new();
+
+    /// <summary>The prior key, now expiring at the end of its grace period.</summary>
+    [JsonPropertyName("oldKey")]
+    public RotatedApiKey OldKey { get; set; } = new();
+
+    /// <summary>Human-readable summary (e.g. "Old key will expire in 24 hours").</summary>
+    [JsonPropertyName("message")]
+    public string Message { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Creates a RotateApiKeyResponse from a JSON element.
+    /// </summary>
+    internal static RotateApiKeyResponse FromJson(JsonElement element, JsonSerializerOptions options)
+    {
+        return JsonSerializer.Deserialize<RotateApiKeyResponse>(element.GetRawText(), options)
+            ?? new RotateApiKeyResponse();
+    }
+}
+
+/// <summary>
 /// Usage statistics for an API key.
 /// </summary>
 public class ApiKeyUsage

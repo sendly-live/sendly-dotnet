@@ -187,4 +187,33 @@ public class AccountResource
 
         using var _ = await _client.DeleteAsync($"/account/keys/{Uri.EscapeDataString(id)}", cancellationToken);
     }
+
+    /// <summary>
+    /// Rotates an API key. Mints a replacement key and keeps the old one working
+    /// for a grace period, so you can roll the new key out before the old one
+    /// stops. The raw value of the new key is returned once, on
+    /// <see cref="RotatedApiKey.Key"/> — store it securely.
+    /// </summary>
+    /// <param name="id">API key ID to rotate</param>
+    /// <param name="gracePeriodHours">
+    /// How long the old key keeps working, in hours (24-168 inclusive). Defaults
+    /// to 24 when null.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The new key (with its one-time raw value), the old key, and a message</returns>
+    public async Task<RotateApiKeyResponse> RotateApiKeyAsync(
+        string id,
+        int? gracePeriodHours = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(id))
+            throw new ValidationException("API key ID is required");
+        if (gracePeriodHours.HasValue && (gracePeriodHours.Value < 24 || gracePeriodHours.Value > 168))
+            throw new ValidationException("Grace period must be between 24 and 168 hours");
+
+        var request = new RotateApiKeyRequest { GracePeriodHours = gracePeriodHours };
+        using var response = await _client.PostAsync(
+            $"/account/keys/{Uri.EscapeDataString(id)}/rotate", request, cancellationToken);
+        return RotateApiKeyResponse.FromJson(response.RootElement, _client.JsonOptions);
+    }
 }
