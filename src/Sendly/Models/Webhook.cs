@@ -23,6 +23,22 @@ public class Webhook
         public const string ContactMarkedValid = "contact.marked_valid";
         public const string ContactsLookupCompleted = "contacts.lookup_completed";
         public const string ContactsBulkMarkedValid = "contacts.bulk_marked_valid";
+        public const string BrandVerified = "brand.verified";
+        public const string BrandFailed = "brand.failed";
+        public const string CampaignApproved = "campaign.approved";
+        public const string CampaignRejected = "campaign.rejected";
+        public const string CampaignSuspended = "campaign.suspended";
+        public const string AssignmentConfirmed = "assignment.confirmed";
+        public const string AssignmentFailed = "assignment.failed";
+        public const string PortCompleted = "port.completed";
+        public const string PortOutRequested = "port_out.requested";
+        public const string PortOutCompleted = "port_out.completed";
+        public const string PortOutRejected = "port_out.rejected";
+        public const string PortOutCancelled = "port_out.cancelled";
+        public const string NumberActivated = "number.activated";
+        public const string NumberFailed = "number.failed";
+        public const string NumberRequirementsRequired = "number.requirements_required";
+        public const string NumberReleased = "number.released";
     }
 
     /// <summary>
