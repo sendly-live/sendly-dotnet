@@ -354,6 +354,88 @@ else
     Console.WriteLine("Released");
 ```
 
+## WhatsApp
+
+Connect a number you own to WhatsApp ($19 one-time setup, no monthly fee),
+create Meta-reviewed message templates, and send with
+`client.Messages.SendAsync(new SendWhatsAppMessageRequest(...))`. Free-form
+text and media only deliver inside an open 24-hour customer-service window
+(the recipient messaged you in the last 24h); an approved template works
+anytime. WhatsApp requires a live API key.
+
+```csharp
+// 1. Connect a number. The connect URL must be opened by a human — they log
+//    in with Facebook in a browser to link their WhatsApp Business Account.
+var signup = await client.WhatsApp.Signup.CreateAsync("+15559876543");
+Console.WriteLine($"Have your user open: {signup.ConnectUrl}");
+
+// 2. Poll until active
+var status = await client.WhatsApp.Signup.GetAsync(signup.Id);
+Console.WriteLine(status.Status); // "initiated" -> "registering" -> "active"
+
+// List your connected senders
+var senders = await client.WhatsApp.Senders.ListAsync();
+foreach (var s in senders.Senders)
+{
+    Console.WriteLine($"{s.PhoneNumber} ({s.DisplayName ?? "no name yet"}) — {s.Status}");
+}
+
+// 3. Create a template (Meta reviews it, usually 24-48h)
+var template = await client.WhatsApp.Templates.CreateAsync(new CreateWhatsAppTemplateRequest
+{
+    Sender = "+15559876543",
+    Name = "order_shipped",
+    Language = "en_US",
+    Category = "UTILITY",
+    Body = "Hi {{1}}, your order {{2}} has shipped!",
+    Examples = new() { ["1"] = "Sam", ["2"] = "#4821" }
+});
+Console.WriteLine(template.Status); // "PENDING"
+
+// List templates; edit a rejected one and resubmit (template names are locked
+// for ~30 days after deletion, so editing is the recovery path)
+var templates = await client.WhatsApp.Templates.ListAsync();
+await client.WhatsApp.Templates.UpdateAsync(template.Id, new UpdateWhatsAppTemplateRequest
+{
+    Body = "Hi {{1}}, your order {{2}} is on its way!",
+    Examples = new() { ["1"] = "Sam", ["2"] = "#4821" }
+});
+await client.WhatsApp.Templates.DeleteAsync("wat_xxx");
+
+// 4. Check the 24-hour window, then send
+var window = await client.WhatsApp.WindowAsync("+15559876543", "+15551234567");
+
+// Free-form text inside an open window
+var message = await client.Messages.SendAsync(new SendWhatsAppMessageRequest(
+    "+15551234567",
+    "+15559876543",
+    text: "Your table is ready!"
+));
+
+// Media with a caption (window-bound; WhatsApp accepts exactly one attachment)
+await client.Messages.SendAsync(new SendWhatsAppMessageRequest(
+    "+15551234567",
+    "+15559876543",
+    text: "Here's your receipt",
+    mediaUrls: new() { "https://example.com/receipt.pdf" }
+));
+
+// Template send — works regardless of the window
+await client.Messages.SendAsync(new SendWhatsAppMessageRequest(
+    "+15551234567",
+    "+15559876543",
+    template: new WhatsAppTemplateSendParams
+    {
+        Name = "order_shipped",
+        Language = "en_US",
+        Variables = new() { ["1"] = "Sam", ["2"] = "#4821" }
+    }
+));
+
+Console.WriteLine(message.WhatsApp.Kind); // "text", "media", or "template"
+Console.WriteLine(message.CreditsUsed);   // priced by country + category
+```
+
 ## Webhooks
 
 ```csharp

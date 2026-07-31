@@ -58,6 +58,40 @@ public partial class MessagesResource
     }
 
     /// <summary>
+    /// Sends a WhatsApp message.
+    ///
+    /// Requires a live API key and a <see cref="SendWhatsAppMessageRequest.From"/>
+    /// number with an active WhatsApp connection (see
+    /// <c>client.WhatsApp.Signup</c>). Free-form text and media only deliver
+    /// inside an open 24-hour customer-service window — outside it, send an
+    /// approved <see cref="SendWhatsAppMessageRequest.Template"/> instead
+    /// (check with <c>client.WhatsApp.WindowAsync</c>).
+    /// </summary>
+    /// <param name="request">WhatsApp message details (text, media with caption, or template)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The created WhatsApp message</returns>
+    public async Task<WhatsAppMessage> SendAsync(SendWhatsAppMessageRequest request, CancellationToken cancellationToken = default)
+    {
+        ValidatePhone(request.To);
+        ValidatePhone(request.From);
+
+        var hasMedia = request.MediaUrls != null && request.MediaUrls.Count > 0;
+        if (string.IsNullOrEmpty(request.Text) && !hasMedia && request.Template == null)
+            throw new ValidationException("Provide 'text', 'mediaUrls', or 'template'");
+
+        using var response = await _client.PostAsync("/messages", request, cancellationToken);
+        var root = response.RootElement;
+
+        JsonElement data;
+        if (root.TryGetProperty("message", out data) || root.TryGetProperty("data", out data))
+        {
+            return WhatsAppMessage.FromJson(data, _client.JsonOptions);
+        }
+
+        return WhatsAppMessage.FromJson(root, _client.JsonOptions);
+    }
+
+    /// <summary>
     /// Sends a group MMS to 2-8 recipients (US/Canada only).
     ///
     /// Creates a multi-party MMS conversation: every recipient sees the others,

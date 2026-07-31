@@ -120,6 +120,12 @@ public class SendlyClient : IDisposable
     public LinksResource Links { get; }
 
     /// <summary>
+    /// Gets the WhatsApp resource — connect senders, manage Meta-reviewed
+    /// templates, and check 24-hour windows.
+    /// </summary>
+    public WhatsAppResource WhatsApp { get; }
+
+    /// <summary>
     /// Creates a new Sendly client.
     /// </summary>
     /// <param name="apiKey">Your Sendly API key</param>
@@ -172,6 +178,7 @@ public class SendlyClient : IDisposable
         Numbers = new NumbersResource(this);
         TenDlc = new TenDlcResource(this);
         Links = new LinksResource(this);
+        WhatsApp = new WhatsAppResource(this);
     }
 
     /// <summary>
