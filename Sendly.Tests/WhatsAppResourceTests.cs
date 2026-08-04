@@ -240,6 +240,209 @@ public class WhatsAppResourceTests : IDisposable
 
     #endregion
 
+    #region Senders GetProfileAsync Tests
+
+    [Fact]
+    public async Task SendersGetProfileAsync_ReturnsProfile()
+    {
+        // Arrange
+        var responseJson = @"{
+            ""phoneNumber"": ""+15559876543"",
+            ""displayName"": ""Acme Inc"",
+            ""profilePhotoUrl"": ""https://example.com/logo.png"",
+            ""category"": ""Retail"",
+            ""about"": ""Fast delivery, friendly service"",
+            ""description"": ""Acme sells everything."",
+            ""email"": ""help@example.com"",
+            ""website"": ""https://example.com"",
+            ""address"": ""123 Main St, Springfield""
+        }";
+        _mockHandler.QueueSuccessResponse(responseJson);
+
+        // Act
+        var profile = await _client.WhatsApp.Senders.GetProfileAsync("+15559876543");
+
+        // Assert
+        Assert.Equal("+15559876543", profile.PhoneNumber);
+        Assert.Equal("Acme Inc", profile.DisplayName);
+        Assert.Equal("https://example.com/logo.png", profile.ProfilePhotoUrl);
+        Assert.Equal("Retail", profile.Category);
+        Assert.Equal("Fast delivery, friendly service", profile.About);
+        Assert.Equal("Acme sells everything.", profile.Description);
+        Assert.Equal("help@example.com", profile.Email);
+        Assert.Equal("https://example.com", profile.Website);
+        Assert.Equal("123 Main St, Springfield", profile.Address);
+    }
+
+    [Fact]
+    public async Task SendersGetProfileAsync_WhenUnset_ReturnsNullFields()
+    {
+        // Arrange
+        _mockHandler.QueueSuccessResponse(@"{
+            ""phoneNumber"": ""+15559876543"",
+            ""displayName"": null,
+            ""profilePhotoUrl"": null,
+            ""category"": null,
+            ""about"": null,
+            ""description"": null,
+            ""email"": null,
+            ""website"": null,
+            ""address"": null
+        }");
+
+        // Act
+        var profile = await _client.WhatsApp.Senders.GetProfileAsync("+15559876543");
+
+        // Assert
+        Assert.Equal("+15559876543", profile.PhoneNumber);
+        Assert.Null(profile.DisplayName);
+        Assert.Null(profile.ProfilePhotoUrl);
+        Assert.Null(profile.About);
+        Assert.Null(profile.Description);
+    }
+
+    [Fact]
+    public async Task SendersGetProfileAsync_HitsCorrectPath()
+    {
+        // Arrange
+        _mockHandler.QueueSuccessResponse(@"{""phoneNumber"": ""+15559876543""}");
+
+        // Act
+        await _client.WhatsApp.Senders.GetProfileAsync("+15559876543");
+
+        // Assert
+        var request = _mockHandler.LastRequest;
+        Assert.NotNull(request);
+        Assert.Equal(HttpMethod.Get, request!.Method);
+        Assert.Contains("whatsapp/senders/%2B15559876543/profile", request.RequestUri?.ToString());
+    }
+
+    [Fact]
+    public async Task SendersGetProfileAsync_WithInvalidPhone_ThrowsValidationException()
+    {
+        // Act & Assert
+        await Assert.ThrowsAsync<ValidationException>(
+            () => _client.WhatsApp.Senders.GetProfileAsync("invalid"));
+    }
+
+    [Fact]
+    public async Task SendersGetProfileAsync_WhenNotConnected_ThrowsNotFoundException()
+    {
+        // Arrange
+        _mockHandler.QueueResponse(HttpStatusCode.NotFound,
+            @"{""error"": ""whatsapp_sender_not_connected"", ""message"": ""This number isn't connected to WhatsApp yet.""}");
+
+        // Act & Assert
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _client.WhatsApp.Senders.GetProfileAsync("+15559876543"));
+    }
+
+    #endregion
+
+    #region Senders UpdateProfileAsync Tests
+
+    [Fact]
+    public async Task SendersUpdateProfileAsync_ReturnsUpdatedProfile()
+    {
+        // Arrange
+        _mockHandler.QueueSuccessResponse(@"{
+            ""phoneNumber"": ""+15559876543"",
+            ""displayName"": ""Acme Inc"",
+            ""profilePhotoUrl"": null,
+            ""category"": ""Retail"",
+            ""about"": ""Fast delivery, friendly service"",
+            ""description"": null,
+            ""email"": null,
+            ""website"": ""https://example.com"",
+            ""address"": null
+        }");
+
+        // Act
+        var profile = await _client.WhatsApp.Senders.UpdateProfileAsync("+15559876543",
+            new UpdateWhatsAppSenderProfileRequest
+            {
+                About = "Fast delivery, friendly service",
+                Website = "https://example.com"
+            });
+
+        // Assert
+        Assert.Equal("Fast delivery, friendly service", profile.About);
+        Assert.Equal("https://example.com", profile.Website);
+        Assert.Null(profile.Description);
+    }
+
+    [Fact]
+    public async Task SendersUpdateProfileAsync_SendsOnlySuppliedFields()
+    {
+        // Arrange
+        _mockHandler.QueueSuccessResponse(@"{""phoneNumber"": ""+15559876543""}");
+
+        // Act
+        await _client.WhatsApp.Senders.UpdateProfileAsync("+15559876543",
+            new UpdateWhatsAppSenderProfileRequest
+            {
+                About = "Fast delivery, friendly service",
+                Website = "https://example.com"
+            });
+
+        // Assert
+        var request = _mockHandler.LastRequest;
+        Assert.NotNull(request);
+        Assert.Equal(HttpMethod.Patch, request!.Method);
+        Assert.Contains("whatsapp/senders/%2B15559876543/profile", request.RequestUri?.ToString());
+        var body = await request.Content!.ReadAsStringAsync();
+        Assert.Contains("\"about\":\"Fast delivery, friendly service\"", body);
+        Assert.Contains("\"website\":\"https://example.com\"", body);
+        // omitted fields keep their current value, so they must not be sent
+        Assert.DoesNotContain("displayName", body);
+        Assert.DoesNotContain("description", body);
+        Assert.DoesNotContain("category", body);
+        Assert.DoesNotContain("email", body);
+        Assert.DoesNotContain("address", body);
+    }
+
+    [Fact]
+    public async Task SendersUpdateProfileAsync_WithInvalidPhone_ThrowsValidationException()
+    {
+        // Act & Assert
+        await Assert.ThrowsAsync<ValidationException>(
+            () => _client.WhatsApp.Senders.UpdateProfileAsync("invalid",
+                new UpdateWhatsAppSenderProfileRequest { About = "Hi" }));
+    }
+
+    [Fact]
+    public async Task SendersUpdateProfileAsync_WithNoFields_ThrowsFromServer()
+    {
+        // Arrange — the server requires at least one field
+        _mockHandler.QueueResponse(HttpStatusCode.BadRequest,
+            @"{""error"": ""invalid_request"", ""message"": ""Provide at least one profile field to update.""}");
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<ValidationException>(
+            () => _client.WhatsApp.Senders.UpdateProfileAsync("+15559876543",
+                new UpdateWhatsAppSenderProfileRequest()));
+        Assert.Contains("at least one profile field", exception.Message);
+    }
+
+    [Fact]
+    public async Task SendersUpdateProfileAsync_WithTestKey_ThrowsSendlyException()
+    {
+        // Arrange — 403 is retryable in the client, so queue 1 initial + 3 retries
+        const string forbidden =
+            @"{""error"": ""whatsapp_requires_live_key"", ""message"": ""WhatsApp requires a live API key. Test keys cannot update sender profiles.""}";
+        for (var i = 0; i < 4; i++)
+            _mockHandler.QueueResponse(HttpStatusCode.Forbidden, forbidden);
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<SendlyException>(
+            () => _client.WhatsApp.Senders.UpdateProfileAsync("+15559876543",
+                new UpdateWhatsAppSenderProfileRequest { About = "Hi" }));
+        Assert.Contains("live API key", exception.Message);
+        Assert.Equal(403, exception.StatusCode);
+    }
+
+    #endregion
+
     #region Templates ListAsync Tests
 
     [Fact]

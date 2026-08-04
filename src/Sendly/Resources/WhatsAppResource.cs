@@ -67,7 +67,8 @@ public partial class WhatsAppResource
     public WhatsAppSignupResource Signup { get; }
 
     /// <summary>
-    /// List the numbers connected (or connecting) to WhatsApp.
+    /// List the numbers connected (or connecting) to WhatsApp and manage their
+    /// business profiles.
     /// </summary>
     public WhatsAppSendersResource Senders { get; }
 
@@ -186,7 +187,8 @@ public class WhatsAppSignupResource
 }
 
 /// <summary>
-/// List the numbers connected (or connecting) to WhatsApp.
+/// List the numbers connected (or connecting) to WhatsApp and manage their
+/// business profiles.
 /// </summary>
 public class WhatsAppSendersResource
 {
@@ -211,6 +213,55 @@ public class WhatsAppSendersResource
     {
         using var doc = await _client.GetAsync("/whatsapp/senders", null, cancellationToken);
         return JsonSerializer.Deserialize<WhatsAppSendersListResponse>(doc.RootElement.GetRawText(), _client.JsonOptions)!;
+    }
+
+    /// <summary>
+    /// Get a sender's WhatsApp business profile.
+    ///
+    /// Returns what recipients see on the sender's contact card: display name,
+    /// photo, category, about line, description, and contact details. The
+    /// sender must be actively connected to WhatsApp — otherwise the API
+    /// responds 404 <c>whatsapp_sender_not_connected</c>.
+    /// </summary>
+    /// <param name="phoneNumber">The WhatsApp-connected sender, in E.164 format</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The sender's business profile</returns>
+    public async Task<WhatsAppSenderProfile> GetProfileAsync(
+        string phoneNumber,
+        CancellationToken cancellationToken = default)
+    {
+        WhatsAppResource.ValidatePhone(phoneNumber);
+
+        using var doc = await _client.GetAsync(
+            $"/whatsapp/senders/{Uri.EscapeDataString(phoneNumber)}/profile", null, cancellationToken);
+        return JsonSerializer.Deserialize<WhatsAppSenderProfile>(doc.RootElement.GetRawText(), _client.JsonOptions)!;
+    }
+
+    /// <summary>
+    /// Update a sender's WhatsApp business profile.
+    ///
+    /// Supply only the fields to change (at least one); omitted fields keep
+    /// their current value. <see cref="UpdateWhatsAppSenderProfileRequest.About"/>
+    /// is capped at 139 characters and
+    /// <see cref="UpdateWhatsAppSenderProfileRequest.Description"/> at 512.
+    /// Requires a live API key.
+    /// </summary>
+    /// <param name="phoneNumber">The WhatsApp-connected sender, in E.164 format</param>
+    /// <param name="request">The profile fields to change</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The updated business profile</returns>
+    public async Task<WhatsAppSenderProfile> UpdateProfileAsync(
+        string phoneNumber,
+        UpdateWhatsAppSenderProfileRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        WhatsAppResource.ValidatePhone(phoneNumber);
+        if (request == null)
+            throw new ValidationException("A profile update 'request' is required");
+
+        using var doc = await _client.PatchAsync(
+            $"/whatsapp/senders/{Uri.EscapeDataString(phoneNumber)}/profile", request, cancellationToken);
+        return JsonSerializer.Deserialize<WhatsAppSenderProfile>(doc.RootElement.GetRawText(), _client.JsonOptions)!;
     }
 }
 
@@ -419,6 +470,95 @@ public class WhatsAppSendersListResponse
 {
     [JsonPropertyName("senders")]
     public List<WhatsAppSender> Senders { get; set; } = new();
+}
+
+/// <summary>
+/// A WhatsApp sender's business profile — what recipients see when they open
+/// the sender's contact card.
+/// </summary>
+public class WhatsAppSenderProfile
+{
+    /// <summary>The sender, in E.164 format.</summary>
+    [JsonPropertyName("phoneNumber")]
+    public string PhoneNumber { get; set; } = string.Empty;
+
+    /// <summary>The name recipients see; null until set.</summary>
+    [JsonPropertyName("displayName")]
+    public string? DisplayName { get; set; }
+
+    /// <summary>
+    /// Profile photo URL, or null when none is set. Read-only — the photo is
+    /// uploaded through the WhatsApp connect flow, not this API.
+    /// </summary>
+    [JsonPropertyName("profilePhotoUrl")]
+    public string? ProfilePhotoUrl { get; set; }
+
+    /// <summary>Business category (e.g. "Retail"), or null when not set.</summary>
+    [JsonPropertyName("category")]
+    public string? Category { get; set; }
+
+    /// <summary>Short about line (max 139 characters), or null when not set.</summary>
+    [JsonPropertyName("about")]
+    public string? About { get; set; }
+
+    /// <summary>Longer business description (max 512 characters), or null when not set.</summary>
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    /// <summary>Contact email, or null when not set.</summary>
+    [JsonPropertyName("email")]
+    public string? Email { get; set; }
+
+    /// <summary>Website URL, or null when not set.</summary>
+    [JsonPropertyName("website")]
+    public string? Website { get; set; }
+
+    /// <summary>Street address, or null when not set.</summary>
+    [JsonPropertyName("address")]
+    public string? Address { get; set; }
+}
+
+/// <summary>
+/// Body for <see cref="WhatsAppSendersResource.UpdateProfileAsync"/>. Supply
+/// only the fields to change; omitted (null) fields keep their current value.
+/// At least one field is required.
+/// </summary>
+public class UpdateWhatsAppSenderProfileRequest
+{
+    /// <summary>Replacement display name.</summary>
+    [JsonPropertyName("displayName")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DisplayName { get; set; }
+
+    /// <summary>Replacement about line (max 139 characters).</summary>
+    [JsonPropertyName("about")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? About { get; set; }
+
+    /// <summary>Replacement business description (max 512 characters).</summary>
+    [JsonPropertyName("description")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Description { get; set; }
+
+    /// <summary>Replacement business category.</summary>
+    [JsonPropertyName("category")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Category { get; set; }
+
+    /// <summary>Replacement contact email.</summary>
+    [JsonPropertyName("email")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Email { get; set; }
+
+    /// <summary>Replacement website URL.</summary>
+    [JsonPropertyName("website")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Website { get; set; }
+
+    /// <summary>Replacement street address.</summary>
+    [JsonPropertyName("address")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Address { get; set; }
 }
 
 /// <summary>

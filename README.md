@@ -434,6 +434,103 @@ await client.Messages.SendAsync(new SendWhatsAppMessageRequest(
 
 Console.WriteLine(message.WhatsApp.Kind); // "text", "media", or "template"
 Console.WriteLine(message.CreditsUsed);   // priced by country + category
+
+// 5. Read and edit a sender's business profile — the contact card recipients
+//    see. Supply only the fields to change; omitted fields keep their value.
+var profile = await client.WhatsApp.Senders.GetProfileAsync("+15559876543");
+Console.WriteLine($"{profile.DisplayName} — {profile.About}");
+
+await client.WhatsApp.Senders.UpdateProfileAsync("+15559876543",
+    new UpdateWhatsAppSenderProfileRequest
+    {
+        About = "Fast delivery, friendly service",  // max 139 chars
+        Description = "Acme sells everything.",     // max 512 chars
+        Website = "https://example.com"
+    });
+```
+
+## RCS
+
+Send branded rich messaging — cards and suggestion chips — with
+`client.Messages.SendAsync(new SendRcsMessageRequest(...))`. Plain-text RCS
+sends fall back to SMS automatically for recipients whose device can't receive
+RCS. RCS is gated behind the `rcs_channel` rollout flag (default-dark) and
+requires a live API key.
+
+```csharp
+// 1. Find your agent — the brand identity your messages are sent as. Contact
+//    support to register one; "testing" reaches invited test numbers only,
+//    "approved" reaches everyone.
+var agents = await client.Rcs.Agents.ListAsync();
+foreach (var agent in agents.Agents)
+{
+    Console.WriteLine($"{agent.Name} ({agent.Status}, sendable={agent.Sendable})");
+}
+
+// 2. Optional pre-flight: can this recipient receive RCS?
+var capability = await client.Rcs.CapabilityAsync("+15551234567");
+Console.WriteLine(capability.Capable);  // false -> text falls back to SMS
+Console.WriteLine(string.Join(", ", capability.Features));
+
+// 3. Send text, optionally with suggestion chips. A reply chip's tap comes
+//    back as an inbound message carrying your postbackData; an action chip
+//    opens a URL.
+var message = await client.Messages.SendAsync(new SendRcsMessageRequest(
+    "+15551234567",
+    text: "Your order #4821 has shipped!",
+    suggestions: new()
+    {
+        RcsSuggestion.CreateReply("Thanks", "thanks"),
+        RcsSuggestion.CreateAction("Track", "track", "https://example.com/track/4821")
+    }
+));
+
+// The response tells you which leg delivered
+if (message.FellBackToSms)
+{
+    // Not RCS-capable: sent and billed as SMS, chips dropped
+    Console.WriteLine(message.Channel);                  // "sms"
+    Console.WriteLine(message.Rcs.RequestedChannel);     // "rcs"
+    Console.WriteLine(message.Rcs.SuggestionsDropped);   // True
+}
+else
+{
+    Console.WriteLine(message.Channel);        // "rcs"
+    Console.WriteLine(message.Rcs.Kind);       // "text"
+    Console.WriteLine(message.Rcs.AgentName);  // "Acme Inc"
+}
+
+// 4. Send a rich card. Cards have no SMS form — a card to a non-RCS recipient
+//    fails with rcs_not_supported_for_recipient rather than falling back.
+await client.Messages.SendAsync(new SendRcsMessageRequest(
+    "+15551234567",
+    card: new RcsCard
+    {
+        Title = "Order #4821 shipped",
+        Description = "Arriving Thursday",
+        MediaUrl = "https://example.com/package.jpg",  // public JPEG, PNG, or GIF
+        Orientation = "vertical",                      // or "horizontal"
+        Suggestions = new()
+        {
+            RcsSuggestion.CreateAction("Track", "track", "https://example.com/track/4821")
+        }
+    }
+));
+
+// Opt out of the SMS fallback to get a 422 instead of an SMS charge
+await client.Messages.SendAsync(new SendRcsMessageRequest(
+    "+15551234567",
+    text: "RCS only, please",
+    fallbackToSms: false
+));
+
+// Pass agentId when your workspace has more than one agent (otherwise the
+// send fails with rcs_agent_ambiguous)
+await client.Messages.SendAsync(new SendRcsMessageRequest(
+    "+15551234567",
+    text: "Your order #4821 has shipped!",
+    agentId: "rag_abc123"
+));
 ```
 
 ## Webhooks

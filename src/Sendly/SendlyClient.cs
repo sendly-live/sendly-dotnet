@@ -126,6 +126,12 @@ public class SendlyClient : IDisposable
     public WhatsAppResource WhatsApp { get; }
 
     /// <summary>
+    /// Gets the RCS resource — list your agents and pre-flight whether a
+    /// recipient can receive RCS.
+    /// </summary>
+    public RcsResource Rcs { get; }
+
+    /// <summary>
     /// Creates a new Sendly client.
     /// </summary>
     /// <param name="apiKey">Your Sendly API key</param>
@@ -179,6 +185,7 @@ public class SendlyClient : IDisposable
         TenDlc = new TenDlcResource(this);
         Links = new LinksResource(this);
         WhatsApp = new WhatsAppResource(this);
+        Rcs = new RcsResource(this);
     }
 
     /// <summary>

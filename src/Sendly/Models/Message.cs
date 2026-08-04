@@ -16,6 +16,10 @@ public class Message
         public const string Queued = "queued";
         public const string Sent = "sent";
         public const string Delivered = "delivered";
+
+        /// <summary>Recipient read the message. RCS and WhatsApp only — SMS never reports one.</summary>
+        public const string Read = "read";
+
         public const string Failed = "failed";
         public const string Bounced = "bounced";
         public const string Retrying = "retrying";

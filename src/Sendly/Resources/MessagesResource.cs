@@ -92,6 +92,47 @@ public partial class MessagesResource
     }
 
     /// <summary>
+    /// Sends an RCS message.
+    ///
+    /// Requires a live API key and an RCS agent registered on your workspace
+    /// (see <c>client.Rcs.Agents</c>). Provide exactly one of
+    /// <see cref="SendRcsMessageRequest.Text"/> or
+    /// <see cref="SendRcsMessageRequest.Card"/>.
+    ///
+    /// Text sends fall back to SMS (and bill as SMS) for recipients whose
+    /// device doesn't support RCS — check
+    /// <see cref="RcsMessage.FellBackToSms"/> on the response. Rich cards have
+    /// no SMS form and never fall back.
+    /// </summary>
+    /// <param name="request">RCS message details (text with optional suggestions, or a rich card)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The created message — native RCS, or its SMS fallback</returns>
+    public async Task<RcsMessage> SendAsync(SendRcsMessageRequest request, CancellationToken cancellationToken = default)
+    {
+        ValidatePhone(request.To);
+
+        var hasText = !string.IsNullOrEmpty(request.Text);
+        var hasCard = request.Card != null;
+        if (hasText == hasCard)
+            throw new ValidationException("Provide exactly one of 'text' or 'card'");
+
+        var hasSuggestions = request.Suggestions != null && request.Suggestions.Count > 0;
+        if (hasSuggestions && !hasText)
+            throw new ValidationException("'suggestions' ride on text messages. Put card buttons in card.suggestions instead");
+
+        using var response = await _client.PostAsync("/messages", request, cancellationToken);
+        var root = response.RootElement;
+
+        JsonElement data;
+        if (root.TryGetProperty("message", out data) || root.TryGetProperty("data", out data))
+        {
+            return RcsMessage.FromJson(data, _client.JsonOptions);
+        }
+
+        return RcsMessage.FromJson(root, _client.JsonOptions);
+    }
+
+    /// <summary>
     /// Sends a group MMS to 2-8 recipients (US/Canada only).
     ///
     /// Creates a multi-party MMS conversation: every recipient sees the others,
