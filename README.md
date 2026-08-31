@@ -261,6 +261,30 @@ Console.WriteLine(result.Enhanced);     // polished rewrite
 Console.WriteLine(result.Explanation);  // what changed and why
 ```
 
+## Idempotency
+
+POSTs carry an automatically generated `Idempotency-Key`, reused across the
+SDK's own timeout and network-error retries, so a retry of a request that
+already reached the API returns the original result instead of sending and
+charging again; after a `5xx` the generated key is rotated so the retry really
+does run again. Pass your own key through the `IdempotentRequestOptions`
+overloads of `SendAsync`, `SendGroupAsync`, `SendBatchAsync`, and
+`ScheduleAsync` when the guarantee needs to outlive the process, such as a job
+queue that re-runs after a crash. Reusing a key within 24 hours returns the
+original response, and reusing it with a different body is rejected with a
+`422`, so derive keys from something stable in your domain, like an order id.
+`SendBatchAsync` sends no automatic key, because the API already deduplicates
+identical batches by their contents.
+
+```csharp
+var message = await client.Messages.SendAsync(
+    new SendMessageRequest("+15551234567", "Your order has shipped!"),
+    new IdempotentRequestOptions { IdempotencyKey = "order-4821-shipped" }
+);
+```
+
+Full details: https://sendly.live/docs/idempotency
+
 ## Message Templates
 
 Reusable SMS templates with `{{variables}}`, published for use with the Verify
