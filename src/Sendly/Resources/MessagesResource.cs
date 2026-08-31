@@ -42,10 +42,34 @@ public partial class MessagesResource
     /// <returns>The sent message</returns>
     public async Task<Message> SendAsync(SendMessageRequest request, CancellationToken cancellationToken = default)
     {
+        return await SendCoreAsync(request, null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends an SMS message with per-call options such as a caller-supplied
+    /// idempotency key.
+    ///
+    /// The SDK already generates a key per logical request automatically, so
+    /// the server can dedupe the SDK's own timeout retries. Supply your own
+    /// key when you need idempotency across process restarts or your own
+    /// retry loops — repeating a request with the same key within 24 hours
+    /// returns the original result instead of sending again.
+    /// </summary>
+    /// <param name="request">Send message request</param>
+    /// <param name="options">Per-call options, including an idempotency key</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The sent message</returns>
+    public async Task<Message> SendAsync(SendMessageRequest request, IdempotentRequestOptions options, CancellationToken cancellationToken = default)
+    {
+        return await SendCoreAsync(request, options?.IdempotencyKey, cancellationToken);
+    }
+
+    private async Task<Message> SendCoreAsync(SendMessageRequest request, string? idempotencyKey, CancellationToken cancellationToken)
+    {
         ValidatePhone(request.To);
         ValidateText(request.Text);
 
-        using var response = await _client.PostAsync("/messages", request, cancellationToken);
+        using var response = await _client.PostAsync("/messages", request, idempotencyKey, true, cancellationToken);
         var root = response.RootElement;
 
         JsonElement data;
@@ -72,6 +96,29 @@ public partial class MessagesResource
     /// <returns>The created WhatsApp message</returns>
     public async Task<WhatsAppMessage> SendAsync(SendWhatsAppMessageRequest request, CancellationToken cancellationToken = default)
     {
+        return await SendCoreAsync(request, null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a WhatsApp message with per-call options such as a
+    /// caller-supplied idempotency key.
+    ///
+    /// The SDK already generates a key per logical request automatically, so
+    /// the server can dedupe the SDK's own timeout retries. Supply your own
+    /// key when you need idempotency across process restarts or your own
+    /// retry loops.
+    /// </summary>
+    /// <param name="request">WhatsApp message details (text, media with caption, or template)</param>
+    /// <param name="options">Per-call options, including an idempotency key</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The created WhatsApp message</returns>
+    public async Task<WhatsAppMessage> SendAsync(SendWhatsAppMessageRequest request, IdempotentRequestOptions options, CancellationToken cancellationToken = default)
+    {
+        return await SendCoreAsync(request, options?.IdempotencyKey, cancellationToken);
+    }
+
+    private async Task<WhatsAppMessage> SendCoreAsync(SendWhatsAppMessageRequest request, string? idempotencyKey, CancellationToken cancellationToken)
+    {
         ValidatePhone(request.To);
         ValidatePhone(request.From);
 
@@ -79,7 +126,7 @@ public partial class MessagesResource
         if (string.IsNullOrEmpty(request.Text) && !hasMedia && request.Template == null)
             throw new ValidationException("Provide 'text', 'mediaUrls', or 'template'");
 
-        using var response = await _client.PostAsync("/messages", request, cancellationToken);
+        using var response = await _client.PostAsync("/messages", request, idempotencyKey, true, cancellationToken);
         var root = response.RootElement;
 
         JsonElement data;
@@ -109,6 +156,29 @@ public partial class MessagesResource
     /// <returns>The created message — native RCS, or its SMS fallback</returns>
     public async Task<RcsMessage> SendAsync(SendRcsMessageRequest request, CancellationToken cancellationToken = default)
     {
+        return await SendCoreAsync(request, null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends an RCS message with per-call options such as a caller-supplied
+    /// idempotency key.
+    ///
+    /// The SDK already generates a key per logical request automatically, so
+    /// the server can dedupe the SDK's own timeout retries. Supply your own
+    /// key when you need idempotency across process restarts or your own
+    /// retry loops.
+    /// </summary>
+    /// <param name="request">RCS message details (text with optional suggestions, or a rich card)</param>
+    /// <param name="options">Per-call options, including an idempotency key</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The created message — native RCS, or its SMS fallback</returns>
+    public async Task<RcsMessage> SendAsync(SendRcsMessageRequest request, IdempotentRequestOptions options, CancellationToken cancellationToken = default)
+    {
+        return await SendCoreAsync(request, options?.IdempotencyKey, cancellationToken);
+    }
+
+    private async Task<RcsMessage> SendCoreAsync(SendRcsMessageRequest request, string? idempotencyKey, CancellationToken cancellationToken)
+    {
         ValidatePhone(request.To);
 
         var hasText = !string.IsNullOrEmpty(request.Text);
@@ -120,7 +190,7 @@ public partial class MessagesResource
         if (hasSuggestions && !hasText)
             throw new ValidationException("'suggestions' ride on text messages. Put card buttons in card.suggestions instead");
 
-        using var response = await _client.PostAsync("/messages", request, cancellationToken);
+        using var response = await _client.PostAsync("/messages", request, idempotencyKey, true, cancellationToken);
         var root = response.RootElement;
 
         JsonElement data;
@@ -146,6 +216,29 @@ public partial class MessagesResource
     /// <returns>The created group message, including a group_message_id on live sends</returns>
     public async Task<GroupMessageResponse> SendGroupAsync(SendGroupMessageRequest request, CancellationToken cancellationToken = default)
     {
+        return await SendGroupCoreAsync(request, null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a group MMS with per-call options such as a caller-supplied
+    /// idempotency key.
+    ///
+    /// The SDK already generates a key per logical request automatically, so
+    /// the server can dedupe the SDK's own timeout retries. Supply your own
+    /// key when you need idempotency across process restarts or your own
+    /// retry loops.
+    /// </summary>
+    /// <param name="request">Group message details (2-8 recipients, text and/or media)</param>
+    /// <param name="options">Per-call options, including an idempotency key</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The created group message, including a group_message_id on live sends</returns>
+    public async Task<GroupMessageResponse> SendGroupAsync(SendGroupMessageRequest request, IdempotentRequestOptions options, CancellationToken cancellationToken = default)
+    {
+        return await SendGroupCoreAsync(request, options?.IdempotencyKey, cancellationToken);
+    }
+
+    private async Task<GroupMessageResponse> SendGroupCoreAsync(SendGroupMessageRequest request, string? idempotencyKey, CancellationToken cancellationToken)
+    {
         if (request.To == null || request.To.Count < 2)
             throw new ValidationException("Group messaging requires at least 2 recipients in 'to'");
 
@@ -159,7 +252,7 @@ public partial class MessagesResource
         if (string.IsNullOrEmpty(request.Text) && !hasMedia)
             throw new ValidationException("Provide 'text' or 'mediaUrls'");
 
-        using var response = await _client.PostAsync("/messages/group", request, cancellationToken);
+        using var response = await _client.PostAsync("/messages/group", request, idempotencyKey, true, cancellationToken);
         var root = response.RootElement;
 
         if (root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object)
@@ -290,11 +383,34 @@ public partial class MessagesResource
     /// <returns>The scheduled message</returns>
     public async Task<ScheduledMessage> ScheduleAsync(ScheduleMessageRequest request, CancellationToken cancellationToken = default)
     {
+        return await ScheduleCoreAsync(request, null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Schedules a message for future delivery with per-call options such as
+    /// a caller-supplied idempotency key.
+    ///
+    /// The SDK already generates a key per logical request automatically, so
+    /// the server can dedupe the SDK's own timeout retries. Supply your own
+    /// key when you need idempotency across process restarts or your own
+    /// retry loops.
+    /// </summary>
+    /// <param name="request">Schedule message request</param>
+    /// <param name="options">Per-call options, including an idempotency key</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The scheduled message</returns>
+    public async Task<ScheduledMessage> ScheduleAsync(ScheduleMessageRequest request, IdempotentRequestOptions options, CancellationToken cancellationToken = default)
+    {
+        return await ScheduleCoreAsync(request, options?.IdempotencyKey, cancellationToken);
+    }
+
+    private async Task<ScheduledMessage> ScheduleCoreAsync(ScheduleMessageRequest request, string? idempotencyKey, CancellationToken cancellationToken)
+    {
         ValidatePhone(request.To);
         ValidateText(request.Text);
         ValidateScheduledAt(request.ScheduledAt);
 
-        using var response = await _client.PostAsync("/messages/schedule", request, cancellationToken);
+        using var response = await _client.PostAsync("/messages/schedule", request, idempotencyKey, true, cancellationToken);
         var root = response.RootElement;
 
         JsonElement data;
@@ -369,6 +485,29 @@ public partial class MessagesResource
     /// <returns>The batch response with results</returns>
     public async Task<BatchMessageResponse> SendBatchAsync(SendBatchRequest request, CancellationToken cancellationToken = default)
     {
+        return await SendBatchCoreAsync(request, null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a batch of messages with per-call options such as a
+    /// caller-supplied idempotency key.
+    ///
+    /// The batch endpoint dedupes header-less retries server-side by hashing
+    /// the request content, so the SDK does not auto-generate a key here.
+    /// Supply your own key when you need idempotency across process restarts
+    /// or your own retry loops.
+    /// </summary>
+    /// <param name="request">Batch send request</param>
+    /// <param name="options">Per-call options, including an idempotency key</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The batch response with results</returns>
+    public async Task<BatchMessageResponse> SendBatchAsync(SendBatchRequest request, IdempotentRequestOptions options, CancellationToken cancellationToken = default)
+    {
+        return await SendBatchCoreAsync(request, options?.IdempotencyKey, cancellationToken);
+    }
+
+    private async Task<BatchMessageResponse> SendBatchCoreAsync(SendBatchRequest request, string? idempotencyKey, CancellationToken cancellationToken)
+    {
         if (request.Messages == null || request.Messages.Count == 0)
             throw new ValidationException("At least one message is required");
 
@@ -379,7 +518,7 @@ public partial class MessagesResource
             ValidateText(item.Text);
         }
 
-        using var response = await _client.PostAsync("/messages/batch", request, cancellationToken);
+        using var response = await _client.PostAsync("/messages/batch", request, idempotencyKey, autoIdempotencyKey: false, cancellationToken);
         return BatchMessageResponse.FromJson(response.RootElement, _client.JsonOptions);
     }
 

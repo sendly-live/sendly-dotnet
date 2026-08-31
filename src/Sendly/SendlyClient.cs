@@ -49,7 +49,7 @@ public class SendlyClient : IDisposable
     public VerifyResource Verify { get; }
 
     /// <summary>
-    /// Gets the Templates resource (Verify API OTP templates, /verify/templates).
+    /// Gets the Templates resource (message templates, /templates).
     /// </summary>
     public TemplatesResource Templates { get; }
 
@@ -148,7 +148,7 @@ public class SendlyClient : IDisposable
 
         _httpClient = new HttpClient
         {
-            BaseAddress = new Uri(options.BaseUrl ?? DefaultBaseUrl),
+            BaseAddress = new Uri(NormalizeBaseUrl(options.BaseUrl ?? DefaultBaseUrl)),
             Timeout = options.Timeout
         };
 
@@ -202,12 +202,42 @@ public class SendlyClient : IDisposable
     /// </summary>
     internal async Task<JsonDocument> PostAsync<T>(string path, T body, CancellationToken cancellationToken = default)
     {
+        return await PostAsync(path, body, null, true, cancellationToken);
+    }
+
+    /// <summary>
+    /// Makes a POST request with idempotency-key control.
+    ///
+    /// Every POST carries an Idempotency-Key header so the server can dedupe
+    /// the SDK's own retries: an auto-generated key ("sendly-dotnet-retry-" +
+    /// UUID) is created once per logical request and reused across timeout and
+    /// network-error retries, but rotated after an actual 5xx response (the
+    /// server may have cached that error under the key). A caller-supplied
+    /// <paramref name="idempotencyKey"/> is sent verbatim and never rotated.
+    /// Pass <paramref name="autoIdempotencyKey"/> false to skip auto-generation
+    /// (the batch endpoint dedupes header-less retries by content hash).
+    /// </summary>
+    internal async Task<JsonDocument> PostAsync<T>(string path, T body, string? idempotencyKey, bool autoIdempotencyKey, CancellationToken cancellationToken = default)
+    {
         var json = JsonSerializer.Serialize(body, _jsonOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
         var normalizedPath = NormalizePath(path);
 
+        var explicitKey = NormalizeIdempotencyKey(idempotencyKey);
+        var initialKey = explicitKey ?? (autoIdempotencyKey ? GenerateIdempotencyKey() : null);
+
         return await ExecuteWithRetryAsync(
-            () => _httpClient.PostAsync(normalizedPath, content, cancellationToken),
+            key =>
+            {
+                var request = new HttpRequestMessage(HttpMethod.Post, normalizedPath)
+                {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+                if (key != null)
+                    request.Headers.Add("Idempotency-Key", key);
+                return _httpClient.SendAsync(request, cancellationToken);
+            },
+            initialKey,
+            rotateKeyOnServerError: explicitKey == null,
             cancellationToken);
     }
 
@@ -240,13 +270,28 @@ public class SendlyClient : IDisposable
     }
 
     /// <summary>
-    /// Makes a POST request with raw HttpContent.
+    /// Makes a POST request with raw HttpContent (multipart uploads). Carries
+    /// an auto-generated Idempotency-Key with the same reuse/rotation rules as
+    /// JSON POSTs.
     /// </summary>
     internal async Task<JsonDocument> PostContentAsync(string path, HttpContent content, CancellationToken cancellationToken = default)
     {
         var normalizedPath = NormalizePath(path);
+        var initialKey = GenerateIdempotencyKey();
+
         return await ExecuteWithRetryAsync(
-            () => _httpClient.PostAsync(normalizedPath, content, cancellationToken),
+            key =>
+            {
+                var request = new HttpRequestMessage(HttpMethod.Post, normalizedPath)
+                {
+                    Content = content
+                };
+                if (key != null)
+                    request.Headers.Add("Idempotency-Key", key);
+                return _httpClient.SendAsync(request, cancellationToken);
+            },
+            initialKey,
+            rotateKeyOnServerError: true,
             cancellationToken);
     }
 
@@ -264,6 +309,19 @@ public class SendlyClient : IDisposable
     private static string NormalizePath(string path)
     {
         return path.TrimStart('/');
+    }
+
+    /// <summary>
+    /// Ensures the base URL ends in a slash before it becomes
+    /// <see cref="HttpClient.BaseAddress"/>. Request paths are relative
+    /// ("messages"), and RFC 3986 reference resolution drops the last segment
+    /// of a base that does not end in "/" — so a base of ".../api/v1" would
+    /// resolve to ".../api/messages" and miss the versioned API entirely.
+    /// </summary>
+    private static string NormalizeBaseUrl(string baseUrl)
+    {
+        var trimmed = baseUrl.Trim();
+        return trimmed.EndsWith('/') ? trimmed : trimmed + "/";
     }
 
     private string BuildUrl(string path, Dictionary<string, string>? queryParams)
@@ -284,6 +342,22 @@ public class SendlyClient : IDisposable
         Func<Task<HttpResponseMessage>> requestFunc,
         CancellationToken cancellationToken)
     {
+        return await ExecuteWithRetryAsync(_ => requestFunc(), null, false, cancellationToken);
+    }
+
+    /// <summary>
+    /// Retry loop with idempotency-key lifecycle. The key is reused across
+    /// timeout and network-error retries (outcome unknown — the server can
+    /// dedupe a request that actually went through) and rotated after an
+    /// actual 5xx response when <paramref name="rotateKeyOnServerError"/> is
+    /// true, so the retry re-executes instead of replaying the cached error.
+    /// </summary>
+    private async Task<JsonDocument> ExecuteWithRetryAsync(
+        Func<string?, Task<HttpResponseMessage>> requestFunc,
+        string? idempotencyKey,
+        bool rotateKeyOnServerError,
+        CancellationToken cancellationToken)
+    {
         SendlyException? lastException = null;
 
         for (int attempt = 0; attempt <= _maxRetries; attempt++)
@@ -296,7 +370,7 @@ public class SendlyClient : IDisposable
 
             try
             {
-                var response = await requestFunc();
+                var response = await requestFunc(idempotencyKey);
                 return await HandleResponseAsync(response, cancellationToken);
             }
             catch (AuthenticationException) { throw; }
@@ -313,6 +387,8 @@ public class SendlyClient : IDisposable
             }
             catch (SendlyException e)
             {
+                if (rotateKeyOnServerError && idempotencyKey != null && e.StatusCode >= 500)
+                    idempotencyKey = GenerateIdempotencyKey();
                 lastException = e;
             }
             catch (HttpRequestException e)
@@ -326,6 +402,34 @@ public class SendlyClient : IDisposable
         }
 
         throw lastException ?? new SendlyException("Request failed after retries");
+    }
+
+    /// <summary>
+    /// Generates an idempotency key for a logical request. Reused across retry
+    /// attempts so the server can recognize a retry of a timed-out POST that
+    /// actually reached it.
+    /// </summary>
+    private static string GenerateIdempotencyKey()
+    {
+        return $"sendly-dotnet-retry-{Guid.NewGuid()}";
+    }
+
+    /// <summary>
+    /// Validates and normalizes a caller-supplied idempotency key. Empty and
+    /// whitespace-only values are treated as absent (auto-generation still
+    /// applies); invalid values fail fast before any network call.
+    /// </summary>
+    private static string? NormalizeIdempotencyKey(string? key)
+    {
+        if (key == null) return null;
+
+        var trimmed = key.Trim();
+        if (trimmed.Length == 0) return null;
+
+        if (trimmed.Length > 255 || trimmed.Any(c => c < 0x20 || c > 0x7E))
+            throw new ValidationException("Idempotency key must be 1-255 printable ASCII characters");
+
+        return trimmed;
     }
 
     private async Task<JsonDocument> HandleResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken)

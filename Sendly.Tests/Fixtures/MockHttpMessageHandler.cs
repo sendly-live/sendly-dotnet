@@ -7,7 +7,7 @@ namespace Sendly.Tests.Fixtures;
 /// </summary>
 public class MockHttpMessageHandler : HttpMessageHandler
 {
-    private readonly Queue<HttpResponseMessage> _responses = new();
+    private readonly Queue<object> _responses = new();
     private readonly List<HttpRequestMessage> _requests = new();
 
     /// <summary>
@@ -60,6 +60,16 @@ public class MockHttpMessageHandler : HttpMessageHandler
     }
 
     /// <summary>
+    /// Queues an exception to be thrown for the next request (e.g. a
+    /// timeout or network error). The request is still recorded before the
+    /// exception is thrown.
+    /// </summary>
+    public void QueueException(Exception exception)
+    {
+        _responses.Enqueue(exception);
+    }
+
+    /// <summary>
     /// Clears all queued responses and recorded requests.
     /// </summary>
     public void Clear()
@@ -90,16 +100,22 @@ public class MockHttpMessageHandler : HttpMessageHandler
             throw new InvalidOperationException("No response queued. Call QueueResponse() before making requests.");
         }
 
-        return await Task.FromResult(_responses.Dequeue());
+        var outcome = _responses.Dequeue();
+        if (outcome is Exception exception)
+        {
+            throw exception;
+        }
+
+        return await Task.FromResult((HttpResponseMessage)outcome);
     }
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            foreach (var response in _responses)
+            foreach (var outcome in _responses)
             {
-                response.Dispose();
+                (outcome as HttpResponseMessage)?.Dispose();
             }
             _responses.Clear();
 

@@ -193,12 +193,14 @@ var batch = await client.Messages.SendBatchAsync(new SendBatchRequest()
 );
 
 Console.WriteLine(batch.BatchId);
-Console.WriteLine($"Queued: {batch.Queued}");
+Console.WriteLine($"Sent: {batch.Sent}");
 Console.WriteLine($"Failed: {batch.Failed}");
 Console.WriteLine($"Credits used: {batch.CreditsUsed}");
 
-// Get batch status
-var status = await client.Messages.GetBatchAsync("batch_xxx");
+// Get batch status. QueuedCount and CreatedAt are reported only here and by the
+// list endpoint, so they are null on the send response above.
+var status = await client.Messages.GetBatchAsync(batch.BatchId);
+Console.WriteLine($"Queued: {status.QueuedCount}");
 
 // List all batches
 var batches = await client.Messages.ListBatchesAsync();
@@ -262,7 +264,8 @@ Console.WriteLine(result.Explanation);  // what changed and why
 ## Message Templates
 
 Reusable SMS templates with `{{variables}}`, published for use with the Verify
-API. (Distinct from `client.Templates`, which manages Verify OTP templates.)
+API. (`client.Templates` is a second, slimmer view of the same `/templates`
+endpoint.)
 
 ```csharp
 // List presets + custom templates

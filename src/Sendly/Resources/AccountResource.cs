@@ -63,7 +63,7 @@ public class AccountResource
         CancellationToken cancellationToken = default)
     {
         var queryParams = options?.ToQueryParams();
-        using var response = await _client.GetAsync("/account/transactions", queryParams, cancellationToken);
+        using var response = await _client.GetAsync("/credits/transactions", queryParams, cancellationToken);
         return new CreditTransactionList(response, _client.JsonOptions);
     }
 
@@ -176,7 +176,8 @@ public class AccountResource
     }
 
     /// <summary>
-    /// Revokes an API key.
+    /// Revokes an API key. The key you are currently authenticating with cannot
+    /// be revoked.
     /// </summary>
     /// <param name="id">API key ID</param>
     /// <param name="cancellationToken">Cancellation token</param>
@@ -185,7 +186,8 @@ public class AccountResource
         if (string.IsNullOrEmpty(id))
             throw new ValidationException("API key ID is required");
 
-        using var _ = await _client.DeleteAsync($"/account/keys/{Uri.EscapeDataString(id)}", cancellationToken);
+        using var _ = await _client.PatchAsync(
+            $"/account/keys/{Uri.EscapeDataString(id)}/revoke", new { }, cancellationToken);
     }
 
     /// <summary>

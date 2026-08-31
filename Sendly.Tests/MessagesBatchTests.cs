@@ -42,30 +42,32 @@ public class MessagesBatchTests : IDisposable
     public async Task SendBatchAsync_WithValidMessages_ReturnsBatchResponse()
     {
         // Arrange
+        // Exactly the payload POST /messages/batch puts on the wire: camelCase
+        // keys, no "queued", no "createdAt".
         var responseJson = @"{
-            ""batch_id"": ""batch_123"",
-            ""total"": 2,
-            ""queued"": 2,
-            ""failed"": 0,
-            ""credits_used"": 2,
+            ""batchId"": ""batch_123"",
             ""status"": ""completed"",
+            ""total"": 2,
+            ""sent"": 2,
+            ""failed"": 0,
+            ""optedOutSkipped"": 0,
+            ""invalidSkipped"": 0,
+            ""creditsUsed"": 2,
+            ""creditsRefunded"": 0,
             ""messages"": [
                 {
-                    ""message_id"": ""msg_1"",
+                    ""index"": 0,
+                    ""id"": ""msg_1"",
                     ""to"": ""+15551234567"",
-                    ""status"": ""queued"",
-                    ""credits_used"": 1,
-                    ""success"": true
+                    ""status"": ""queued""
                 },
                 {
-                    ""message_id"": ""msg_2"",
+                    ""index"": 1,
+                    ""id"": ""msg_2"",
                     ""to"": ""+15559876543"",
-                    ""status"": ""queued"",
-                    ""credits_used"": 1,
-                    ""success"": true
+                    ""status"": ""queued""
                 }
-            ],
-            ""created_at"": ""2024-01-20T10:00:00Z""
+            ]
         }";
         _mockHandler.QueueSuccessResponse(responseJson);
 
@@ -85,11 +87,18 @@ public class MessagesBatchTests : IDisposable
         Assert.NotNull(response);
         Assert.Equal("batch_123", response.BatchId);
         Assert.Equal(2, response.Total);
-        Assert.Equal(2, response.Queued);
+        Assert.Equal(2, response.Sent);
         Assert.Equal(0, response.Failed);
+        Assert.Equal(0, response.OptedOutSkipped);
+        Assert.Equal(0, response.InvalidSkipped);
         Assert.Equal(2, response.CreditsUsed);
+        Assert.Equal(0, response.CreditsRefunded);
         Assert.Equal("completed", response.Status);
         Assert.Equal(2, response.Messages.Count);
+        Assert.Equal("msg_1", response.Messages[0].Id);
+        // Absent from a send response, not defaulted to zero.
+        Assert.Null(response.QueuedCount);
+        Assert.Null(response.CreatedAt);
     }
 
     [Fact]
@@ -97,37 +106,35 @@ public class MessagesBatchTests : IDisposable
     {
         // Arrange
         var responseJson = @"{
-            ""batch_id"": ""batch_456"",
+            ""batchId"": ""batch_456"",
+            ""status"": ""partial_failure"",
             ""total"": 3,
-            ""queued"": 2,
+            ""sent"": 2,
             ""failed"": 1,
-            ""credits_used"": 2,
-            ""status"": ""completed"",
+            ""optedOutSkipped"": 0,
+            ""invalidSkipped"": 0,
+            ""creditsUsed"": 2,
+            ""creditsRefunded"": 1,
             ""messages"": [
                 {
-                    ""message_id"": ""msg_1"",
+                    ""index"": 0,
+                    ""id"": ""msg_1"",
                     ""to"": ""+15551234567"",
-                    ""status"": ""queued"",
-                    ""credits_used"": 1,
-                    ""success"": true
+                    ""status"": ""queued""
                 },
                 {
+                    ""index"": 1,
                     ""to"": ""+15559999999"",
                     ""status"": ""failed"",
-                    ""credits_used"": 0,
-                    ""success"": false,
-                    ""error"": ""Invalid phone number"",
-                    ""error_code"": ""INVALID_NUMBER""
+                    ""error"": ""Invalid phone number""
                 },
                 {
-                    ""message_id"": ""msg_3"",
+                    ""index"": 2,
+                    ""id"": ""msg_3"",
                     ""to"": ""+15558888888"",
-                    ""status"": ""queued"",
-                    ""credits_used"": 1,
-                    ""success"": true
+                    ""status"": ""queued""
                 }
-            ],
-            ""created_at"": ""2024-01-20T10:00:00Z""
+            ]
         }";
         _mockHandler.QueueSuccessResponse(responseJson);
 
@@ -146,9 +153,11 @@ public class MessagesBatchTests : IDisposable
 
         // Assert
         Assert.Equal(3, response.Total);
-        Assert.Equal(2, response.Queued);
+        Assert.Equal(2, response.Sent);
         Assert.Equal(1, response.Failed);
         Assert.Equal(2, response.CreditsUsed);
+        Assert.Equal(1, response.CreditsRefunded);
+        Assert.True(response.IsPartialFailure);
 
         // Verify failed result has error details
         var failedResult = response.Messages[1];
@@ -247,22 +256,23 @@ public class MessagesBatchTests : IDisposable
     {
         // Arrange
         var responseJson = @"{
-            ""batch_id"": ""batch_single"",
-            ""total"": 1,
-            ""queued"": 1,
-            ""failed"": 0,
-            ""credits_used"": 1,
+            ""batchId"": ""batch_single"",
             ""status"": ""completed"",
+            ""total"": 1,
+            ""sent"": 1,
+            ""failed"": 0,
+            ""optedOutSkipped"": 0,
+            ""invalidSkipped"": 0,
+            ""creditsUsed"": 1,
+            ""creditsRefunded"": 0,
             ""messages"": [
                 {
-                    ""message_id"": ""msg_1"",
+                    ""index"": 0,
+                    ""id"": ""msg_1"",
                     ""to"": ""+15551234567"",
-                    ""status"": ""queued"",
-                    ""credits_used"": 1,
-                    ""success"": true
+                    ""status"": ""queued""
                 }
-            ],
-            ""created_at"": ""2024-01-20T10:00:00Z""
+            ]
         }";
         _mockHandler.QueueSuccessResponse(responseJson);
 
@@ -295,24 +305,25 @@ public class MessagesBatchTests : IDisposable
 
             if (i > 0) results.Append(",");
             results.Append($@"{{
-                ""message_id"": ""msg_{i}"",
+                ""index"": {i},
+                ""id"": ""msg_{i}"",
                 ""to"": ""+1555123{i:D4}"",
-                ""status"": ""queued"",
-                ""credits_used"": 1,
-                ""success"": true
+                ""status"": ""queued""
             }}");
         }
         results.Append("]");
 
         var responseJson = $@"{{
-            ""batch_id"": ""batch_large"",
-            ""total"": 100,
-            ""queued"": 100,
-            ""failed"": 0,
-            ""credits_used"": 100,
+            ""batchId"": ""batch_large"",
             ""status"": ""completed"",
-            ""messages"": {results},
-            ""created_at"": ""2024-01-20T10:00:00Z""
+            ""total"": 100,
+            ""sent"": 100,
+            ""failed"": 0,
+            ""optedOutSkipped"": 0,
+            ""invalidSkipped"": 0,
+            ""creditsUsed"": 100,
+            ""creditsRefunded"": 0,
+            ""messages"": {results}
         }}";
         _mockHandler.QueueSuccessResponse(responseJson);
 
@@ -429,31 +440,33 @@ public class MessagesBatchTests : IDisposable
     public async Task GetBatchAsync_WithValidId_ReturnsBatchResponse()
     {
         // Arrange
+        // The batch read endpoint names the identifier "id" and does report
+        // queued/createdAt.
         var responseJson = @"{
-            ""batch_id"": ""batch_get_123"",
-            ""total"": 2,
-            ""queued"": 2,
-            ""failed"": 0,
-            ""credits_used"": 2,
+            ""id"": ""batch_get_123"",
             ""status"": ""completed"",
+            ""total"": 2,
+            ""queued"": 0,
+            ""sent"": 2,
+            ""delivered"": 2,
+            ""failed"": 0,
+            ""creditsReserved"": 2,
+            ""creditsUsed"": 2,
+            ""creditsRefunded"": 0,
+            ""createdAt"": ""2024-01-20T10:00:00Z"",
+            ""completedAt"": ""2024-01-20T10:05:00Z"",
             ""messages"": [
                 {
-                    ""message_id"": ""msg_1"",
+                    ""id"": ""msg_1"",
                     ""to"": ""+15551234567"",
-                    ""status"": ""delivered"",
-                    ""credits_used"": 1,
-                    ""success"": true
+                    ""status"": ""delivered""
                 },
                 {
-                    ""message_id"": ""msg_2"",
+                    ""id"": ""msg_2"",
                     ""to"": ""+15559876543"",
-                    ""status"": ""delivered"",
-                    ""credits_used"": 1,
-                    ""success"": true
+                    ""status"": ""delivered""
                 }
-            ],
-            ""created_at"": ""2024-01-20T10:00:00Z"",
-            ""completed_at"": ""2024-01-20T10:05:00Z""
+            ]
         }";
         _mockHandler.QueueSuccessResponse(responseJson);
 
@@ -465,6 +478,10 @@ public class MessagesBatchTests : IDisposable
         Assert.Equal("batch_get_123", response.BatchId);
         Assert.Equal("completed", response.Status);
         Assert.Equal(2, response.Messages.Count);
+        Assert.Equal(0, response.QueuedCount);
+        Assert.Equal(2, response.CreditsUsed);
+        Assert.NotNull(response.CreatedAt);
+        Assert.NotNull(response.CompletedAt);
     }
 
     [Fact]
@@ -517,14 +534,15 @@ public class MessagesBatchTests : IDisposable
     {
         // Arrange
         var responseJson = @"{
-            ""batch_id"": ""batch/special+id"",
-            ""total"": 1,
-            ""queued"": 1,
-            ""failed"": 0,
-            ""credits_used"": 1,
+            ""id"": ""batch/special+id"",
             ""status"": ""completed"",
+            ""total"": 1,
+            ""queued"": 0,
+            ""sent"": 1,
+            ""failed"": 0,
+            ""creditsUsed"": 1,
             ""messages"": [],
-            ""created_at"": ""2024-01-20T10:00:00Z""
+            ""createdAt"": ""2024-01-20T10:00:00Z""
         }";
         _mockHandler.QueueSuccessResponse(responseJson);
 
@@ -542,14 +560,15 @@ public class MessagesBatchTests : IDisposable
     {
         // Arrange
         var responseJson = @"{
-            ""batch_id"": ""batch_pending"",
+            ""id"": ""batch_pending"",
+            ""status"": ""processing"",
             ""total"": 100,
             ""queued"": 50,
+            ""sent"": 50,
             ""failed"": 0,
-            ""credits_used"": 50,
-            ""status"": ""processing"",
+            ""creditsUsed"": 50,
             ""messages"": [],
-            ""created_at"": ""2024-01-20T10:00:00Z""
+            ""createdAt"": ""2024-01-20T10:00:00Z""
         }";
         _mockHandler.QueueSuccessResponse(responseJson);
 
@@ -558,7 +577,7 @@ public class MessagesBatchTests : IDisposable
 
         // Assert
         Assert.Equal("processing", response.Status);
-        Assert.Equal(50, response.Queued);
+        Assert.Equal(50, response.QueuedCount);
         Assert.Equal(100, response.Total);
     }
 
@@ -573,22 +592,24 @@ public class MessagesBatchTests : IDisposable
         var responseJson = @"{
             ""data"": [
                 {
-                    ""batch_id"": ""batch_1"",
-                    ""total"": 10,
-                    ""queued"": 10,
-                    ""failed"": 0,
-                    ""credits_used"": 10,
+                    ""id"": ""batch_1"",
                     ""status"": ""completed"",
-                    ""created_at"": ""2024-01-20T10:00:00Z""
+                    ""total"": 10,
+                    ""queued"": 0,
+                    ""sent"": 10,
+                    ""failed"": 0,
+                    ""creditsUsed"": 10,
+                    ""createdAt"": ""2024-01-20T10:00:00Z""
                 },
                 {
-                    ""batch_id"": ""batch_2"",
-                    ""total"": 5,
-                    ""queued"": 5,
-                    ""failed"": 0,
-                    ""credits_used"": 5,
+                    ""id"": ""batch_2"",
                     ""status"": ""completed"",
-                    ""created_at"": ""2024-01-20T11:00:00Z""
+                    ""total"": 5,
+                    ""queued"": 0,
+                    ""sent"": 5,
+                    ""failed"": 0,
+                    ""creditsUsed"": 5,
+                    ""createdAt"": ""2024-01-20T11:00:00Z""
                 }
             ],
             ""has_more"": false,
@@ -604,6 +625,8 @@ public class MessagesBatchTests : IDisposable
         Assert.Equal(2, result.Count());
         Assert.False(result.HasMore);
         Assert.Equal(2, result.Total);
+        Assert.Equal("batch_1", result.Data[0].BatchId);
+        Assert.Equal(10, result.Data[0].CreditsUsed);
     }
 
     [Fact]
@@ -638,13 +661,14 @@ public class MessagesBatchTests : IDisposable
         var responseJson = @"{
             ""data"": [
                 {
-                    ""batch_id"": ""batch_page1"",
-                    ""total"": 10,
-                    ""queued"": 10,
-                    ""failed"": 0,
-                    ""credits_used"": 10,
+                    ""id"": ""batch_page1"",
                     ""status"": ""completed"",
-                    ""created_at"": ""2024-01-20T10:00:00Z""
+                    ""total"": 10,
+                    ""queued"": 0,
+                    ""sent"": 10,
+                    ""failed"": 0,
+                    ""creditsUsed"": 10,
+                    ""createdAt"": ""2024-01-20T10:00:00Z""
                 }
             ],
             ""has_more"": true,

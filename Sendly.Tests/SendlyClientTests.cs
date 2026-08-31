@@ -85,6 +85,78 @@ public class SendlyClientTests
         Assert.Equal("https://sendly.live/api/v1", SendlyClient.DefaultBaseUrl);
     }
 
+    /// <summary>
+    /// Reads the HttpClient the SDK built for itself.
+    /// </summary>
+    private static Uri BaseAddressOf(SendlyClient client)
+    {
+        var field = typeof(SendlyClient).GetField("_httpClient",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(field);
+        var http = (HttpClient)field!.GetValue(client)!;
+        Assert.NotNull(http.BaseAddress);
+        return http.BaseAddress!;
+    }
+
+    [Fact]
+    public void Constructor_WithDefaultBaseUrl_KeepsVersionedSegmentWhenResolvingPaths()
+    {
+        // Request paths are relative, and RFC 3986 drops the last segment of a
+        // base that does not end in "/" — so an unslashed ".../api/v1" would
+        // send every call to ".../api/*" instead of the versioned API.
+        using var client = new SendlyClient("test_api_key");
+
+        var baseAddress = BaseAddressOf(client);
+
+        Assert.Equal("https://sendly.live/api/v1/", baseAddress.ToString());
+        Assert.Equal("https://sendly.live/api/v1/messages",
+            new Uri(baseAddress, "messages").ToString());
+    }
+
+    [Fact]
+    public void Constructor_WithCustomBaseUrlLackingTrailingSlash_KeepsLastSegment()
+    {
+        var options = new SendlyClientOptions { BaseUrl = "https://custom.api.com/api/v1" };
+
+        using var client = new SendlyClient("test_api_key", options);
+
+        Assert.Equal("https://custom.api.com/api/v1/messages",
+            new Uri(BaseAddressOf(client), "messages").ToString());
+    }
+
+    [Fact]
+    public void Constructor_WithCustomBaseUrlEndingInSlash_DoesNotDoubleIt()
+    {
+        var options = new SendlyClientOptions { BaseUrl = "https://custom.api.com/api/v1/" };
+
+        using var client = new SendlyClient("test_api_key", options);
+
+        Assert.Equal("https://custom.api.com/api/v1/", BaseAddressOf(client).ToString());
+    }
+
+    [Fact]
+    public async Task Request_OnDefaultBaseUrl_TargetsVersionedApiOnTheWire()
+    {
+        using var mockHandler = new MockHttpMessageHandler();
+        mockHandler.QueueSuccessResponse(@"{""data"": [], ""has_more"": false, ""total"": 0}");
+
+        using var client = new SendlyClient("test_api_key");
+        // Swap in the recording handler but keep the base address the SDK
+        // itself derived, so the assertion covers the real default.
+        var field = typeof(SendlyClient).GetField("_httpClient",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        using var instrumented = new HttpClient(mockHandler)
+        {
+            BaseAddress = BaseAddressOf(client),
+        };
+        field!.SetValue(client, instrumented);
+
+        await client.Messages.ListAsync();
+
+        Assert.Equal("https://sendly.live/api/v1/messages",
+            mockHandler.LastRequest?.RequestUri?.GetLeftPart(UriPartial.Path));
+    }
+
     [Fact]
     public void Version_IsSet()
     {

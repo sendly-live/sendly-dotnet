@@ -1,5 +1,37 @@
 # Sendly (.NET)
 
+## 3.38.0
+
+### Minor Changes
+
+- **Automatic idempotency keys on every POST.** The client now generates an `Idempotency-Key` (`sendly-dotnet-retry-<guid>`) once per logical request and reuses it across its own timeout and network-error retries, so on endpoints that support idempotency the server recognises a retry of a request that already reached it and returns the original response instead of executing it again. This narrows the duplicate-send and double-charge window that timeout retries used to open, it does not close it: the server records a key only once the original request has finished, so a retry that fires while the first request is still running is not recognised as a repeat. Keys are rotated after a real 5xx (the outcome is known, so the retry should re-execute) and preserved across timeouts and connection failures (the outcome is unknown, so the server can dedupe). Multipart uploads carry a key on the same terms: `Media.UploadAsync`, the EIN document on `BusinessUpgrade.StartAsync` / `ResubmitAsync`, and enterprise verification-document uploads. GET, PUT, PATCH and DELETE are unaffected.
+- **`Messages.SendBatchAsync` deliberately sends no automatic key.** The batch endpoint already dedupes header-less retries server-side by hashing the request contents, and an automatic per-attempt key would bypass that protection. You can still pass your own key.
+- **Caller-supplied idempotency keys.** New overloads take an `IdempotentRequestOptions` after the request: `Messages.SendAsync` (SMS, WhatsApp and RCS), `Messages.SendGroupAsync`, `Messages.SendBatchAsync` and `Messages.ScheduleAsync`. Your key is sent verbatim and never rotated, and repeating a request with the same key within 24 hours returns the original response instead of executing again. Keys are validated before any network call (1 to 255 printable ASCII characters, otherwise `ValidationException`); empty and whitespace-only values are treated as absent, so the automatic key still applies. One caveat worth knowing up front: reusing a key with a different request body is rejected by the server with a 422, and this SDK still maps 400 and 422 onto the same `ValidationException`, so for now you have to match on the message to tell a key conflict from a validation failure.
+- **Batch responses now decode.** The batch endpoints send camelCase field names and the model was reading snake_case, so `BatchId` came back as an empty string, `CreditsUsed` as 0, and `CreatedAt` / `CompletedAt` as null on every batch call. The names now match the wire. `GetBatchAsync` and `ListBatchesAsync` return the batch id as `id` rather than `batchId`, which is read as a fallback, so `BatchId` is populated there too.
+- `BatchMessageResponse` gains the fields the send endpoint actually reports: `Sent` (messages handed off for delivery), `OptedOutSkipped`, `InvalidSkipped` and `CreditsRefunded`. Use `Sent`, not the queued count, to see how much of a batch went out.
+- `BatchMessageResponse.Queued` is replaced by `QueuedCount`, which is `int?`. Only the batch read and list endpoints report a queued count; a send response does not include one, and it is now null there instead of a misleading 0.
+- **The `Template` model matches what the API returns**, which it did not before. `Body` reads the `text` field (it was previously always empty), and the variables list is a list of objects with a key, type and fallback rather than a list of strings, so any template that declared a variable threw a JSON exception on the way in rather than returning a value. `Template` gains `Status`, `Version`, `PresetSlug` and `PublishedAt`, and `IsPreset` is now a real field read from the response instead of being derived from a `Type` string the API never sent. `CreateTemplateRequest` and `UpdateTemplateRequest` send `text` and an optional list of variable definitions, and omit anything you leave unset.
+- **Members removed in the model rewrites are restored and marked `[Obsolete]`.** Code written against the previous release still compiles; you will now see `CS0618` deprecation warnings pointing at the replacement. None of them are serialised, so they cannot leak into a request body.
+  - `BatchMessageResponse.Queued` (use `QueuedCount`). It returns 0 when the response reports no queued count, so it cannot tell "zero queued" apart from "not reported".
+  - `Template.Variables` as `List<string>` (use `VariableDefinitions`, which also carries each variable's type and fallback). Reading it returns a fresh copy of the keys, so an in-place change such as `template.Variables.Add(...)` is discarded. Assign a whole list, or edit `VariableDefinitions` directly.
+  - `Template.Type` (use `IsPreset`, or `PresetSlug` for which preset a template came from).
+  - `Template.IsPublished` (use `Status`, which is `"draft"` or `"published"`, or `PublishedAt`).
+  - `Template.IsDefault` is **permanently empty**: templates have no default flag, so it is never populated from a response and never sent. It holds only what you assign. Use `IsPreset` to tell built-in templates from your own.
+  - `CreateTemplateRequest.Locale` and `UpdateTemplateRequest.Locale` are **never sent**. Templates are not locale-scoped. Create one template per locale.
+  - `CreateTemplateRequest.IsPublished` is **never sent**: templates are always created as drafts. Call `Templates.PublishAsync` afterwards.
+  - `UpdateTemplateRequest.IsPublished` is **never sent**: publishing is a separate call. Use `Templates.PublishAsync`.
+  - Not deprecated but worth the same warning: `Template.Locale` is never populated from a response either, for the same reason.
+
+### Patch Changes
+
+- **A default-constructed client could not reach the API at all, and now can.** Request paths are relative and the base address did not end in a slash, so reference resolution dropped the version segment: with the default base URL `https://sendly.live/api/v1`, a call to `messages` resolved to `https://sendly.live/api/messages` and came back 404. That applied to every request, not one endpoint. Base URLs are now normalised, so a custom `BaseUrl` of `https://your-host/api/v1` works whether or not you wrote the trailing slash, and an existing trailing slash is not doubled. If you already worked around this by adding the slash yourself, nothing changes for you.
+- **`client.Templates` was pointed at a prefix the API does not serve, so none of it could ever have worked.** `ListAsync`, `GetAsync`, `CreateAsync`, `UpdateAsync`, `DeleteAsync` and `PublishAsync` all requested `/verify/templates...`, which has no route at any version and returned 404 every time. They now use `/templates...` and really execute, including the writes. If you built around these methods failing, that code is now live.
+- `client.Templates` and `client.MessageTemplates` are two views of the same `/templates` resource, a slimmer one and a fuller one, not two separate template systems. The docs previously described `client.Templates` as managing Verify OTP templates under `/verify/templates`, which was wrong on both counts.
+- **`Account.ListTransactionsAsync()` requested `/account/transactions`**, which does not exist, so it 404'd. It now reads `/credits/transactions` and returns your credit ledger.
+- **`Account.RevokeApiKeyAsync(id)` sent `DELETE /account/keys/{id}`**, a path registered for GET only, so the call 404'd and the key was never revoked. Revocation is now `PATCH /account/keys/{id}/revoke`, the verb the server accepts. If you called this and assumed a key was dead, check it. The key you are currently authenticating with still cannot be revoked.
+- **`Account.ListApiKeysAsync()` always returned an empty list.** It looked for an `api_keys` array and the endpoint returns `keys`. Both envelopes are accepted now, so the call returns your keys.
+- **Still broken, so you do not go hunting.** `Templates.UnpublishAsync` still calls `/verify/templates/{id}/unpublish`; there is no unpublish route anywhere on the API to repoint it at, so it continues to 404. `Templates.CloneAsync` and `MessageTemplates.CloneAsync` call `/templates/{id}/clone`, which exists only as an unversioned, session-authenticated route, so both still 404 for an API key. `ListTemplatesOptions.Limit`, `Type` and `Locale` are sent as query parameters that the list endpoint ignores; it returns every template regardless.
+
 ## 3.32.0
 
 ### Minor Changes
@@ -33,7 +65,7 @@
 
 - `/api/v1/enterprise/workspaces/:id/verification/submit` now returns specific missing-field errors (e.g. `"Missing required fields: website"`) instead of listing every required field whether present or not.
 - Endpoint accepts both flat and `{ verification: {...} }` wrapped shapes (matches `/enterprise/provision`).
-- `useCase` validation expanded from 23 entries to the full 43-value Telnyx enum.
+- `useCase` validation expanded from 23 entries to the full 43-value carrier use-case enum.
 
 ## 3.29.0
 

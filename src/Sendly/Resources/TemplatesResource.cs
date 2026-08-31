@@ -25,7 +25,7 @@ public class TemplatesResource
         if (!string.IsNullOrEmpty(options?.Locale))
             queryParams["locale"] = options.Locale;
 
-        var doc = await _client.GetAsync("/verify/templates", queryParams, cancellationToken);
+        var doc = await _client.GetAsync("/templates", queryParams, cancellationToken);
         return JsonSerializer.Deserialize<TemplateListResponse>(doc.RootElement.GetRawText(), _client.JsonOptions)!;
     }
 
@@ -33,7 +33,7 @@ public class TemplatesResource
         string id,
         CancellationToken cancellationToken = default)
     {
-        var doc = await _client.GetAsync($"/verify/templates/{id}", null, cancellationToken);
+        var doc = await _client.GetAsync($"/templates/{id}", null, cancellationToken);
         return JsonSerializer.Deserialize<Template>(doc.RootElement.GetRawText(), _client.JsonOptions)!;
     }
 
@@ -41,7 +41,7 @@ public class TemplatesResource
         CreateTemplateRequest request,
         CancellationToken cancellationToken = default)
     {
-        var doc = await _client.PostAsync("/verify/templates", request, cancellationToken);
+        var doc = await _client.PostAsync("/templates", request, cancellationToken);
         return JsonSerializer.Deserialize<Template>(doc.RootElement.GetRawText(), _client.JsonOptions)!;
     }
 
@@ -50,7 +50,7 @@ public class TemplatesResource
         UpdateTemplateRequest request,
         CancellationToken cancellationToken = default)
     {
-        var doc = await _client.PatchAsync($"/verify/templates/{id}", request, cancellationToken);
+        var doc = await _client.PatchAsync($"/templates/{id}", request, cancellationToken);
         return JsonSerializer.Deserialize<Template>(doc.RootElement.GetRawText(), _client.JsonOptions)!;
     }
 
@@ -58,7 +58,7 @@ public class TemplatesResource
         string id,
         CancellationToken cancellationToken = default)
     {
-        var doc = await _client.DeleteAsync($"/verify/templates/{id}", cancellationToken);
+        var doc = await _client.DeleteAsync($"/templates/{id}", cancellationToken);
         return JsonSerializer.Deserialize<DeleteTemplateResponse>(doc.RootElement.GetRawText(), _client.JsonOptions)!;
     }
 
@@ -66,7 +66,7 @@ public class TemplatesResource
         string id,
         CancellationToken cancellationToken = default)
     {
-        var doc = await _client.PostAsync($"/verify/templates/{id}/publish", new { }, cancellationToken);
+        var doc = await _client.PostAsync($"/templates/{id}/publish", new { }, cancellationToken);
         return JsonSerializer.Deserialize<Template>(doc.RootElement.GetRawText(), _client.JsonOptions)!;
     }
 

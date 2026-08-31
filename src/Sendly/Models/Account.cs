@@ -335,7 +335,9 @@ public class ApiKeyList : IEnumerable<ApiKey>
 
         var root = response.RootElement;
 
-        if (root.TryGetProperty("api_keys", out var keysElement) && keysElement.ValueKind == JsonValueKind.Array)
+        if ((root.TryGetProperty("keys", out var keysElement) ||
+             root.TryGetProperty("api_keys", out keysElement)) &&
+            keysElement.ValueKind == JsonValueKind.Array)
         {
             foreach (var element in keysElement.EnumerateArray())
             {

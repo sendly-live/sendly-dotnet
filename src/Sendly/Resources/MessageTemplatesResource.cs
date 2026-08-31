@@ -12,9 +12,8 @@ namespace Sendly.Resources;
 /// variable values, clone (including from a preset), delete, and AI-generate a
 /// template from a description.
 ///
-/// This is distinct from <see cref="TemplatesResource"/> (available as
-/// <c>client.Templates</c>), which manages the Verify API's OTP templates under
-/// <c>/verify/templates</c>.
+/// <see cref="TemplatesResource"/> (available as <c>client.Templates</c>) is a
+/// second, slimmer view of the same <c>/templates</c> endpoint.
 /// </summary>
 /// <example>
 /// <code>
