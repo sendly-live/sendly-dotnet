@@ -274,7 +274,10 @@ queue that re-runs after a crash. Reusing a key within 24 hours returns the
 original response, and reusing it with a different body is rejected with a
 `422`, so derive keys from something stable in your domain, like an order id.
 `SendBatchAsync` sends no automatic key, because the API already deduplicates
-identical batches by their contents.
+identical batches by their contents. The RCS registration writes
+(`client.Rcs.Brands` and `client.Rcs.Agents`) take an optional
+`IdempotentRequestOptions` too; their `PATCH` and `PUT` calls send a key only
+when you supply one.
 
 ```csharp
 var message = await client.Messages.SendAsync(
@@ -481,17 +484,121 @@ await client.WhatsApp.Senders.UpdateProfileAsync("+15559876543",
 Send branded rich messaging — cards and suggestion chips — with
 `client.Messages.SendAsync(new SendRcsMessageRequest(...))`. Plain-text RCS
 sends fall back to SMS automatically for recipients whose device can't receive
-RCS. RCS is gated behind the `rcs_channel` rollout flag (default-dark) and
-requires a live API key.
+RCS. RCS is gated behind the `rcs_channel` rollout flag (default-dark): while
+it is off for your account every `client.Rcs` call throws `NotFoundException`
+(`ApiErrorCode` `rcs_not_enabled`). Sends and capability checks require a live
+API key.
+
+### Register your brand and agent
+
+Sending as your brand requires an RCS agent — the verified sender identity
+recipients see. Registration is self-serve, from the dashboard or the API:
+draft a brand and an agent, submit them to Sendly for review, and Sendly passes
+them to the carrier network. Reads need an API key with the `rcs:read` scope,
+writes `rcs:write`. Logo, hero and call-to-action media must already be public
+`https://` URLs; uploading files is dashboard-only. US businesses only for now.
 
 ```csharp
-// 1. Find your agent — the brand identity your messages are sent as. Contact
-//    support to register one; "testing" reaches invited test numbers only,
-//    "approved" reaches everyone.
+// 1. Draft the brand. Dossier.GetAsync() prefills it from details already on
+//    file (10DLC or toll-free verification); fill in what's missing.
+var dossier = await client.Rcs.Dossier.GetAsync();
+var brandInput = dossier.Brand;
+brandInput.DisplayName = "Acme Coffee";
+brandInput.LegalEntityType ??= RcsLegalEntityType.LimitedLiabilityCompany;
+brandInput.WebsiteUrl ??= "https://acme.example";
+var brand = (await client.Rcs.Brands.CreateAsync(brandInput)).Brand;
+
+// 2. Draft the agent under it
+var agent = (await client.Rcs.Agents.CreateAsync(new CreateRcsAgentRequest
+{
+    BrandId = brand.Id,
+    DisplayName = "Acme Coffee",
+    UseCase = RcsAgentUseCase.MultiUse,
+    Basics = new RcsAgentBasicsInput
+    {
+        Description = "Order updates and support for Acme Coffee customers",
+        LogoUrl = "https://acme.example/rcs/logo.png",
+        HeroUrl = "https://acme.example/rcs/hero.png",
+        BrandColor = "#0B6E4F",
+        PrivacyPolicyUrl = "https://acme.example/privacy",
+        TermsAndConditionsUrl = "https://acme.example/terms",
+        Website = new RcsAgentWebsiteContact { Url = "https://acme.example", Label = "Visit our site" }
+    }
+})).Agent;
+
+// 3. Submit for review. Required-field checks run here; a 422 lists each gap
+//    in ValidationException.FieldErrors as brand.<field> / agent.<field>.
+var submitted = await client.Rcs.Agents.SubmitAsync(agent.Id,
+    new IdempotentRequestOptions { IdempotencyKey = $"rcs-submit-{agent.Id}" });
+Console.WriteLine(submitted.Stage);  // "in_review"
+
+// 4. Poll until the stage reaches "testing", then invite your devices and
+//    fill in the campaign
+var status = await client.Rcs.Agents.GetAsync(agent.Id);
+if (status.Stage == RcsCustomerStage.Testing)
+{
+    await client.Rcs.Agents.SetTestDevicesAsync(agent.Id, new[]
+    {
+        new RcsTestDeviceInput("+13125550100", "Sam Pixel")
+    });
+
+    await client.Rcs.Agents.UpdateAsync(agent.Id, new UpdateRcsAgentRequest
+    {
+        Campaign = new RcsCampaign
+        {
+            AgentOverview = "Order confirmations, pickup alerts, and support replies",
+            Interactions = new()
+            {
+                new RcsInteraction { InteractionType = RcsInteractionType.TransactionalUpdates, Description = "Order status" }
+            },
+            MessageExamples = new()
+            {
+                "Your order #4821 is being roasted.",
+                "Your order #4821 is ready for pickup!",
+                "Thanks for visiting. Reply HELP for support."
+            },
+            ConsentSettings = new RcsConsentSettings
+            {
+                OptInMethods = new() { new RcsOptInMethod { MethodType = RcsOptInMethodType.Website, Description = "Checkout checkbox" } },
+                CallToAction = "Text me order updates",
+                CallToActionUrl = "https://acme.example/checkout",
+                OptInMessage = "Welcome to Acme Coffee updates. Reply STOP to opt out.",
+                HelpResponse = "Acme Coffee: email help@acme.example for support.",
+                OptOutResponse = "You have been unsubscribed from Acme Coffee updates."
+            }
+        }
+    });
+
+    // 5. Once you've tested on an invited device, request launch
+    var launch = await client.Rcs.Agents.RequestLaunchAsync(agent.Id,
+        new RcsRequestLaunchRequest { TestUrl = "https://acme.example/rcs-test" });
+    Console.WriteLine(launch.Stage);  // "launch_review"
+}
+
+// The whole registration at a glance
+var registration = await client.Rcs.Registration.GetAsync();
+Console.WriteLine($"{registration.Stage}: {registration.Agent?.DisplayName}");
+```
+
+Updates only change the fields you set: leave a property `null` to keep its
+value, send an empty string to clear a text field, and set
+`UpdateRcsAgentRequest.ClearCampaign` / `ClearTesting` to remove a whole
+section. Registration errors carry the API's code in
+`SendlyException.ApiErrorCode` (`RcsErrorCode` lists them): `rcs_field_locked`,
+`rcs_brand_not_verified` and `rcs_launch_not_ready` are 409s (`SendlyException`
+with `StatusCode` 409), `rcs_us_only` and `rcs_invalid_content` are 422s
+(`ValidationException`, with `FieldErrors` on the latter), and `rcs_not_found`
+is a 404 (`NotFoundException`).
+
+### Send
+
+```csharp
+// 1. Find your agent — the brand identity your messages are sent as.
+//    "testing" reaches invited test numbers only, "approved" reaches everyone.
 var agents = await client.Rcs.Agents.ListAsync();
 foreach (var agent in agents.Agents)
 {
-    Console.WriteLine($"{agent.Name} ({agent.Status}, sendable={agent.Sendable})");
+    Console.WriteLine($"{agent.Name} ({agent.Status}, stage={agent.Stage}, sendable={agent.Sendable})");
 }
 
 // 2. Optional pre-flight: can this recipient receive RCS?
@@ -698,6 +805,12 @@ catch (SendlyException e)
     Console.WriteLine(e.StatusCode);
 }
 ```
+
+Every exception also carries the API's own `error` string as `ApiErrorCode`
+(for example `rcs_field_locked` and `rcs_launch_not_ready`, both 409s) and,
+when the response lists per-field problems, `FieldErrors` (`Path` + `Message`
+pairs such as `brand.ein: Enter a 9-digit EIN`). `ErrorCode` is unchanged and
+still holds the per-class constant.
 
 ## Message Object
 

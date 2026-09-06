@@ -1,5 +1,25 @@
 # Sendly (.NET)
 
+## Unreleased
+
+### Minor Changes
+
+- **Self-serve RCS registration on `client.Rcs`.** Draft a brand and an agent, invite test devices, submit for review by Sendly, and request launch, all from the API. Sendly reviews the registration and passes it to the carrier network; the API mirrors what the dashboard can do (approval and launch remain with Sendly). Ten new operations, nested the way `Agents` already is: `Rcs.Registration.GetAsync()`, `Rcs.Dossier.GetAsync()`, `Rcs.Brands.CreateAsync(...)` / `UpdateAsync(...)`, and `Rcs.Agents.CreateAsync(...)` / `GetAsync(...)` / `UpdateAsync(...)` / `SetTestDevicesAsync(...)` / `SubmitAsync(...)` / `RequestLaunchAsync(...)`. Every write takes an optional `IdempotentRequestOptions`; POSTs also get an automatic key, as elsewhere. Registration calls need an API key with the `rcs:read` / `rcs:write` scopes and, like the rest of RCS, answer 404 (`rcs_not_enabled`, a `NotFoundException`) until the `rcs_channel` flag is on for your account.
+
+  Assets can't be uploaded over the API: `LogoUrl`, `HeroUrl` and `CallToActionMediaUrl` must already be public `https://` URLs (422 `rcs_invalid_content` otherwise). Upload files from the dashboard.
+
+  New types in `Sendly.Resources`: `RcsBrandInput` (with `RcsBrandAddressInput`, `RcsBrandContactInput`), `RcsBrand` (with `RcsBrandAddress`, `RcsBrandContact`), `RcsBrandResponse`, `CreateRcsAgentRequest`, `UpdateRcsAgentRequest` (with `ClearCampaign` / `ClearTesting` to remove a section), `RcsAgentBasicsInput` / `RcsAgentBasics` (with `RcsAgentPhoneContact`, `RcsAgentWebsiteContact`, `RcsAgentEmailContact`), `RcsCampaign`, `RcsInteraction`, `RcsConsentSettings`, `RcsOptInMethod`, `RcsTesting`, `RcsAgentDetail`, `RcsAgentResponse`, `RcsAgentDetailResponse`, `RcsAgentReviewResponse`, `RcsTestDevice`, `RcsTestDeviceInput`, `RcsTestDeviceListResponse`, `RcsRequestLaunchRequest`, `RcsRegistration`, `RcsDossier`, and the string-constant classes `RcsCustomerStage`, `RcsReviewStatus`, `RcsErrorCode`, `RcsLegalEntityType`, `RcsOrganizationType`, `RcsAgentUseCase`, `RcsInteractionType`, `RcsOptInMethodType`, `RcsDossierSource`.
+
+- **`RcsAgent.Stage`** on `Rcs.Agents.ListAsync()` items: where each agent sits in the registration journey (`RcsCustomerStage`).
+
+- **`SendlyException.ApiErrorCode` and `FieldErrors`.** Every mapped exception now carries the response body's `error` string (e.g. `rcs_field_locked` vs `rcs_launch_not_ready`, both 409s) and its `errors` array as `SendlyFieldError` (`Path` + `Message`). `ErrorCode` is unchanged and still returns the per-class constant. Populated for every resource, not just RCS.
+
+- `PATCH` and `PUT` requests can now carry a caller-supplied `Idempotency-Key` (used by the RCS registration writes). No key is generated automatically for those verbs; the existing methods behave exactly as before.
+
+### Not changed in this release
+
+- No public members were deprecated, renamed or removed. `Rcs.Agents.ListAsync()` and `Rcs.CapabilityAsync(...)` are untouched.
+
 ## 3.38.0
 
 ### Minor Changes

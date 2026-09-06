@@ -126,8 +126,8 @@ public class SendlyClient : IDisposable
     public WhatsAppResource WhatsApp { get; }
 
     /// <summary>
-    /// Gets the RCS resource — list your agents and pre-flight whether a
-    /// recipient can receive RCS.
+    /// Gets the RCS resource — register your brand and agent, list your
+    /// agents, and pre-flight whether a recipient can receive RCS.
     /// </summary>
     public RcsResource Rcs { get; }
 
@@ -256,6 +256,16 @@ public class SendlyClient : IDisposable
     }
 
     /// <summary>
+    /// Makes a PATCH request carrying a caller-supplied Idempotency-Key. No
+    /// key is generated when <paramref name="idempotencyKey"/> is absent; a
+    /// supplied key is validated, sent verbatim, and never rotated.
+    /// </summary>
+    internal async Task<JsonDocument> PatchAsync<T>(string path, T body, string? idempotencyKey, CancellationToken cancellationToken = default)
+    {
+        return await SendJsonWithKeyAsync(HttpMethod.Patch, path, body, idempotencyKey, cancellationToken);
+    }
+
+    /// <summary>
     /// Makes a PUT request.
     /// </summary>
     internal async Task<JsonDocument> PutAsync<T>(string path, T body, CancellationToken cancellationToken = default)
@@ -266,6 +276,37 @@ public class SendlyClient : IDisposable
 
         return await ExecuteWithRetryAsync(
             () => _httpClient.PutAsync(normalizedPath, content, cancellationToken),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Makes a PUT request carrying a caller-supplied Idempotency-Key, on the
+    /// same terms as <see cref="PatchAsync{T}(string, T, string?, CancellationToken)"/>.
+    /// </summary>
+    internal async Task<JsonDocument> PutAsync<T>(string path, T body, string? idempotencyKey, CancellationToken cancellationToken = default)
+    {
+        return await SendJsonWithKeyAsync(HttpMethod.Put, path, body, idempotencyKey, cancellationToken);
+    }
+
+    private async Task<JsonDocument> SendJsonWithKeyAsync<T>(HttpMethod method, string path, T body, string? idempotencyKey, CancellationToken cancellationToken)
+    {
+        var json = JsonSerializer.Serialize(body, _jsonOptions);
+        var normalizedPath = NormalizePath(path);
+        var explicitKey = NormalizeIdempotencyKey(idempotencyKey);
+
+        return await ExecuteWithRetryAsync(
+            key =>
+            {
+                var request = new HttpRequestMessage(method, normalizedPath)
+                {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+                if (key != null)
+                    request.Headers.Add("Idempotency-Key", key);
+                return _httpClient.SendAsync(request, cancellationToken);
+            },
+            explicitKey,
+            rotateKeyOnServerError: false,
             cancellationToken);
     }
 
@@ -445,21 +486,44 @@ public class SendlyClient : IDisposable
 
         JsonDocument? errorDoc = null;
         string message = "Unknown error";
+        string? apiErrorCode = null;
+        var fieldErrors = new List<SendlyFieldError>();
 
         try
         {
             errorDoc = JsonDocument.Parse(body);
-            if (errorDoc.RootElement.TryGetProperty("message", out var msgProp))
+            var root = errorDoc.RootElement;
+            if (root.TryGetProperty("error", out var errProp) && errProp.ValueKind == JsonValueKind.String)
+                apiErrorCode = errProp.GetString();
+            if (root.TryGetProperty("message", out var msgProp) && msgProp.ValueKind == JsonValueKind.String)
                 message = msgProp.GetString() ?? message;
-            else if (errorDoc.RootElement.TryGetProperty("error", out var errProp))
-                message = errProp.GetString() ?? message;
+            else if (apiErrorCode != null)
+                message = apiErrorCode;
+            if (root.TryGetProperty("errors", out var errorsProp) && errorsProp.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var entry in errorsProp.EnumerateArray())
+                {
+                    if (entry.ValueKind != JsonValueKind.Object) continue;
+                    var path = entry.TryGetProperty("path", out var pathProp) && pathProp.ValueKind == JsonValueKind.String
+                        ? pathProp.GetString() ?? string.Empty
+                        : string.Empty;
+                    var detail = entry.TryGetProperty("message", out var detailProp) && detailProp.ValueKind == JsonValueKind.String
+                        ? detailProp.GetString() ?? string.Empty
+                        : string.Empty;
+                    fieldErrors.Add(new SendlyFieldError(path, detail));
+                }
+            }
         }
         catch
         {
             message = body;
         }
+        finally
+        {
+            errorDoc?.Dispose();
+        }
 
-        throw response.StatusCode switch
+        SendlyException exception = response.StatusCode switch
         {
             HttpStatusCode.Unauthorized => new AuthenticationException(message),
             HttpStatusCode.PaymentRequired => new InsufficientCreditsException(message),
@@ -468,6 +532,9 @@ public class SendlyClient : IDisposable
             HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity => new ValidationException(message),
             _ => new SendlyException(message, (int)response.StatusCode)
         };
+        exception.ApiErrorCode = apiErrorCode;
+        exception.FieldErrors = fieldErrors;
+        throw exception;
     }
 
     private static RateLimitException CreateRateLimitException(string message, HttpResponseMessage response)
