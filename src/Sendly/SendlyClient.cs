@@ -15,7 +15,7 @@ public class SendlyClient : IDisposable
     /// <summary>
     /// SDK version.
     /// </summary>
-    public const string Version = "3.37.1";
+    public const string Version = "3.39.0";
 
     /// <summary>
     /// Default API base URL.
@@ -479,9 +479,23 @@ public class SendlyClient : IDisposable
 
         if (response.IsSuccessStatusCode)
         {
-            return string.IsNullOrEmpty(body)
-                ? JsonDocument.Parse("{}")
-                : JsonDocument.Parse(body);
+            if (string.IsNullOrEmpty(body))
+                return JsonDocument.Parse("{}");
+
+            try
+            {
+                return JsonDocument.Parse(body);
+            }
+            catch (JsonException)
+            {
+                var snippet = body.Length > 200 ? body.Substring(0, 200) : body;
+                throw new SendlyException(
+                    $"Expected JSON from the Sendly API but the response could not be parsed " +
+                    $"(HTTP {(int)response.StatusCode}). Check that BaseUrl points at the API " +
+                    $"(https://sendly.live/api/v1) and that no proxy is intercepting the request. " +
+                    $"Response began: {snippet}",
+                    (int)response.StatusCode);
+            }
         }
 
         JsonDocument? errorDoc = null;

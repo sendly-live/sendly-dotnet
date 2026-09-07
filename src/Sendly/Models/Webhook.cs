@@ -15,10 +15,25 @@ public class Webhook
     {
         public const string MessageSent = "message.sent";
         public const string MessageDelivered = "message.delivered";
+        public const string MessageRead = "message.read";
         public const string MessageFailed = "message.failed";
         public const string MessageBounced = "message.bounced";
         public const string MessageRetrying = "message.retrying";
         public const string MessageReceived = "message.received";
+        public const string MessageOptOut = "message.opt_out";
+        public const string MessageOptIn = "message.opt_in";
+        public const string VerificationCreated = "verification.created";
+        public const string VerificationDelivered = "verification.delivered";
+        public const string VerificationVerified = "verification.verified";
+        public const string VerificationExpired = "verification.expired";
+        public const string VerificationFailed = "verification.failed";
+        public const string VerificationResent = "verification.resent";
+        public const string VerificationDeliveryFailed = "verification.delivery_failed";
+        public const string ConversationCreated = "conversation.created";
+        public const string ConversationUpdated = "conversation.updated";
+        public const string DraftCreated = "draft.created";
+        public const string DraftApproved = "draft.approved";
+        public const string DraftRejected = "draft.rejected";
         public const string ContactAutoFlagged = "contact.auto_flagged";
         public const string ContactMarkedValid = "contact.marked_valid";
         public const string ContactsLookupCompleted = "contacts.lookup_completed";
@@ -30,6 +45,12 @@ public class Webhook
         public const string CampaignSuspended = "campaign.suspended";
         public const string AssignmentConfirmed = "assignment.confirmed";
         public const string AssignmentFailed = "assignment.failed";
+        public const string RcsBrandVerified = "rcs_brand.verified";
+        public const string RcsBrandFailed = "rcs_brand.failed";
+        public const string RcsAgentTesting = "rcs_agent.testing";
+        public const string RcsAgentLive = "rcs_agent.live";
+        public const string RcsAgentRejected = "rcs_agent.rejected";
+        public const string RcsAgentActionRequired = "rcs_agent.action_required";
         public const string PortCompleted = "port.completed";
         public const string PortOutRequested = "port_out.requested";
         public const string PortOutCompleted = "port_out.completed";
@@ -39,6 +60,14 @@ public class Webhook
         public const string NumberFailed = "number.failed";
         public const string NumberRequirementsRequired = "number.requirements_required";
         public const string NumberReleased = "number.released";
+        public const string WhatsappAccountConnected = "whatsapp_account.connected";
+        public const string WhatsappAccountFailed = "whatsapp_account.failed";
+        public const string WhatsappTemplateApproved = "whatsapp_template.approved";
+        public const string WhatsappTemplateRejected = "whatsapp_template.rejected";
+        public const string WhatsappTemplatePaused = "whatsapp_template.paused";
+        public const string CallStarted = "call.started";
+        public const string CallCompleted = "call.completed";
+        public const string CallRecordingReady = "call.recording.ready";
     }
 
     /// <summary>
