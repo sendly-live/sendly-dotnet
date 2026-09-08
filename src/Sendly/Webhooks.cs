@@ -154,6 +154,7 @@ public static class Webhooks
                 Id = root.GetProperty("id").GetString() ?? "",
                 Type = root.GetProperty("type").GetString() ?? "",
                 Data = msgData,
+                RawObject = msgElement.Clone(),
                 ApiVersion = GetStringOrDefault(root, "api_version", "2024-01"),
                 Livemode = root.TryGetProperty("livemode", out var lm) && lm.GetBoolean()
             };
@@ -222,9 +223,36 @@ public class WebhookEvent
     [JsonPropertyName("type")]
     public string Type { get; set; } = string.Empty;
 
-    /// <summary>Event data</summary>
+    /// <summary>
+    /// The message view of <c>data.object</c>. Only meaningful for
+    /// <c>message.*</c> events: lifecycle events (<c>rcs_*</c>,
+    /// <c>whatsapp_*</c>, <c>call.*</c>, <c>brand.*</c>, <c>campaign.*</c>,
+    /// <c>assignment.*</c>, <c>number.*</c>, <c>port*</c>) carry a different
+    /// object entirely and leave every property here at its default. Use
+    /// <see cref="RawObject"/> or <see cref="ObjectAs{T}"/> for those.
+    /// </summary>
     [JsonPropertyName("data")]
     public WebhookMessageData Data { get; set; } = new();
+
+    /// <summary>
+    /// <c>data.object</c> exactly as it arrived, for every event type.
+    /// </summary>
+    [JsonIgnore]
+    public JsonElement? RawObject { get; set; }
+
+    /// <summary>
+    /// Deserializes <c>data.object</c> into <typeparamref name="T"/>. Use it
+    /// for lifecycle events, whose payload is not message-shaped.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The event carries no data.object.</exception>
+    public T? ObjectAs<T>(JsonSerializerOptions? options = null)
+    {
+        if (RawObject is null)
+        {
+            throw new InvalidOperationException("This event carries no data.object.");
+        }
+        return RawObject.Value.Deserialize<T>(options);
+    }
 
     /// <summary>When the event was created (unix timestamp or ISO 8601)</summary>
     [JsonIgnore]
